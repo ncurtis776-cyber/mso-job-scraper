@@ -25,5 +25,5 @@ jobs:
       - name: Run scraper
         env:
           GOOGLE_CREDS: ${{ secrets.GOOGLE_CREDS }}
-        run: python ./clean_scraper.py
+        run: ls -R && python ./clean_scraper.py
 

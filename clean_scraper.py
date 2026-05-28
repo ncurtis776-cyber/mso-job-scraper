@@ -12,9 +12,12 @@ scopes = [
 ]
 
 # ✅ LOAD CREDS FROM GITHUB SECRET (NOT FILE)
-creds_dict = json.loads(os.environ["GOOGLE_CREDS"])
+creds_json = os.environ["GOOGLE_CREDS"]
+creds_dict = json.loads(creds_json)
+
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 client = gspread.authorize(creds)
+
 
 sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1FkEqxI_ZhpdaUD1AxyV_oGTW3mHXo-sBb4FKGSZ8hD0").worksheet("Jobs")
 

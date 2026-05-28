@@ -26,9 +26,14 @@ jobs:
         env:
           GOOGLE_CREDS: ${{ secrets.GOOGLE_CREDS }}
         
+
 run: |
+  echo "CURRENT DIRECTORY:"
   pwd
+  echo "FILES:"
   ls -R
+  echo "RUNNING SCRIPT:"
   python ./clean_scraper.py
+
 
 

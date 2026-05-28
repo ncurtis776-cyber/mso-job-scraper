@@ -2,7 +2,8 @@ name: Run MSO Scraper Daily
 
 on:
   schedule:
-    - cron: "0 12 * * *"
+
+- cron: "0 12 * * *" # Runs at 12:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -26,5 +27,3 @@ jobs:
         env:
           GOOGLE_CREDS: ${{ secrets.GOOGLE_CREDS }}
         run: python clean_scraper.py
-
- 

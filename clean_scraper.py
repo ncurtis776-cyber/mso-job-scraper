@@ -11,13 +11,12 @@ scopes = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# ✅ LOAD CREDS FROM GITHUB SECRET (NOT FILE)
+# ✅ LOAD CREDS FROM GITHUB SECRET
 creds_json = os.environ["GOOGLE_CREDS"]
 creds_dict = json.loads(creds_json)
 
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 client = gspread.authorize(creds)
-
 
 sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1FkEqxI_ZhpdaUD1AxyV_oGTW3mHXo-sBb4FKGSZ8hD0").worksheet("Jobs")
 
@@ -60,3 +59,4 @@ if jobs:
     sheet.append_rows(jobs)
 
 print("SUCCESS - Jobs added:", len(jobs))
+``

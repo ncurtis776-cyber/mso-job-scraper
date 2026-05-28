@@ -2,8 +2,7 @@ name: Run MSO Scraper Daily
 
 on:
   schedule:
-
-- cron: "0 12 * * *" # Runs at 12:00 UTC
+    - cron: "0 12 * * *"
   workflow_dispatch:
 
 jobs:

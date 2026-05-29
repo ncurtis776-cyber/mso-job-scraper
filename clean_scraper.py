@@ -5,11 +5,9 @@ import json
 
 print("START TEST")
 
-# ✅ Make sure secret exists
 if "GOOGLE_CREDS" not in os.environ:
     raise Exception("GOOGLE_CREDS missing")
 
-# ✅ Load credentials
 creds_dict = json.loads(os.environ["GOOGLE_CREDS"])
 
 scopes = [
@@ -22,12 +20,11 @@ client = gspread.authorize(creds)
 
 print("✅ AUTH WORKED")
 
-# ✅ Use direct sheet URL (no chance of wrong file)
-sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1FkEqxI_ZhpdaUD1AxyV_oGTW3mHXo-sBb4FKGSZ8hD0").worksheet("Jobs")
+sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1FkEqxI_ZhpdaUD1AxyV_oGTW3mHXo-sBb4FKGSZ8hD0").sheet1
 
 print("✅ SHEET CONNECTED")
+print("CONNECTED SHEET TITLE:", sheet.spreadsheet.title)
 
-# ✅ FORCE WRITE
 sheet.append_row(["TEST SUCCESS", "If you see this, it works"])
 
 print("✅ WRITE COMPLETE")

@@ -87,44 +87,54 @@ for company in companies:
         print("Error:", e)
 
 # =========================
-# ✅ NUGWORK SCRAPER (FIXED)
+# ✅ NUGWORK SCRAPER (STABLE VERSION)
 # =========================
 try:
     url = "https://nugwork.net/jobs"
     res = requests.get(url, headers=headers)
     soup = BeautifulSoup(res.text, "html.parser")
 
-    for link in soup.find_all("a"):
-        title = link.text.strip()
+    links = soup.find_all("a")
+
+    for link in links:
+        title = link.get_text(strip=True)
         href = link.get("href")
 
-        # ✅ ONLY keep real job links
-        if href and "/jobs/" in href and title:
+        # ✅ basic validation first
+        if not title or not href:
+            continue
 
-            lt = title.lower()
+        # ✅ ensure full link
+        if href.startswith("/"):
+            href = "https://nugwork.net" + href
 
-            # ✅ STRICT FILTER (HIGH QUALITY ROLES)
-            if any(x in lt for x in ["director", "operations", "project"]):
+        # ✅ ONLY actual job pages (not categories)
+        if "/jobs/" not in href:
+            continue
 
-                key = title
+        lt = title.lower()
 
-                if key not in seen:
-                    seen.add(key)
+        # ✅ filter relevant roles
+        if not any(x in lt for x in ["director", "operations", "project"]):
+            continue
 
-                    if href.startswith("/"):
-                        href = "https://nugwork.net" + href
+        # ✅ avoid duplicates
+        if title in seen:
+            continue
 
-                    jobs.append([
-                        "Various (NugWork)",
-                        title,
-                        "Job Board",
-                        "Unknown",
-                        datetime.today().strftime('%Y-%m-%d'),
-                        href
-                    ])
+        seen.add(title)
+
+        jobs.append([
+            "Various (NugWork)",
+            title,
+            "Job Board",
+            "Unknown",
+            datetime.today().strftime('%Y-%m-%d'),
+            href
+        ])
+
 except Exception as e:
     print("NugWork error:", e)
-``
 
 # =========================
 # ✅ INDEED SCRAPER (NEW)

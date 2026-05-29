@@ -16,7 +16,12 @@ scopes = [
     "https://www.googleapis.com/auth/drive"
 ]
 
+if "GOOGLE_CREDS" not in os.environ:
+    raise Exception("🔥 GOOGLE_CREDS NOT FOUND")
+
 creds_dict = json.loads(os.environ["GOOGLE_CREDS"])
+print("✅ GOOGLE CREDS LOADED")
+
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 client = gspread.authorize(creds)
 sheet.append_row(["TEST WRITE", "IF YOU SEE THIS = CONNECTION WORKS"])

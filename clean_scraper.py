@@ -87,19 +87,23 @@ for company in companies:
         print("Error:", e)
 
 # =========================
-# ✅ NUGWORK SCRAPER
+# ✅ NUGWORK SCRAPER (FIXED)
 # =========================
 try:
-    res = requests.get("https://nugwork.net", headers=headers)
+    url = "https://nugwork.net/jobs"
+    res = requests.get(url, headers=headers)
     soup = BeautifulSoup(res.text, "html.parser")
 
     for link in soup.find_all("a"):
         title = link.text.strip()
         href = link.get("href")
 
-        if title and href:
+        # ✅ ONLY keep real job links
+        if href and "/jobs/" in href and title:
+
             lt = title.lower()
 
+            # ✅ STRICT FILTER (HIGH QUALITY ROLES)
             if any(x in lt for x in ["director", "operations", "project"]):
 
                 key = title
@@ -120,6 +124,7 @@ try:
                     ])
 except Exception as e:
     print("NugWork error:", e)
+``
 
 # =========================
 # ✅ INDEED SCRAPER (NEW)

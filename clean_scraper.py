@@ -59,4 +59,3 @@ if jobs:
     sheet.append_rows(jobs)
 
 print("SUCCESS - Jobs added:", len(jobs))
-``

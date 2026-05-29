@@ -1,196 +1,33 @@
-import requests
-from bs4 import BeautifulSoup
-from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 import os
 import json
-import yfinance as yf
 
-# =========================
-# ✅ GOOGLE AUTH (GITHUB SECRET)
-# =========================
+print("START TEST")
+
+# ✅ Make sure secret exists
+if "GOOGLE_CREDS" not in os.environ:
+    raise Exception("GOOGLE_CREDS missing")
+
+# ✅ Load credentials
+creds_dict = json.loads(os.environ["GOOGLE_CREDS"])
 
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-if "GOOGLE_CREDS" not in os.environ:
-    raise Exception("🔥 GOOGLE_CREDS NOT FOUND")
-
-creds_dict = json.loads(os.environ["GOOGLE_CREDS"])
-print("✅ GOOGLE CREDS LOADED")
-
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 client = gspread.authorize(creds)
-sheet.append_row(["TEST WRITE", "IF YOU SEE THIS = CONNECTION WORKS"])
-print("DEBUG: TEST ROW WRITTEN")
 
-# ✅ CONNECT TO SHEETS
-sheet = client.open("Cannabis MSO Intelligence Dashboard").worksheet("Jobs")
+print("✅ AUTH WORKED")
 
-financials_sheet = client.open("Cannabis MSO Intelligence Dashboard").worksheet("Financials")
-financials_sheet.append_row(["TEST FINANCIAL", "WORKING"])
-print("DEBUG: FINANCIAL TEST WRITTEN")
-# =========================
-# ✅ HEADERS (FIX GITHUB SCRAPING)
-# =========================
+# ✅ Use direct sheet URL (no chance of wrong file)
+sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1FkEqxI_ZhpdaUD1AxyV_oGTW3mHXo-sBb4FKGSZ8hD0").worksheet("Jobs")
 
-headers = {
-    "User-Agent": "Mozilla/5.0"
-}
+print("✅ SHEET CONNECTED")
 
-# =========================
-# ✅ COMPANY SOURCES (TOP MSOs)
-# =========================
+# ✅ FORCE WRITE
+sheet.append_row(["TEST SUCCESS", "If you see this, it works"])
 
-companies = [
-    {"name": "Curaleaf", "url": "https://boards.greenhouse.io/embed/job_board?for=curaleaf"},
-    {"name": "Cresco Labs", "url": "https://boards.greenhouse.io/embed/job_board?for=crescolabs"},
-    {"name": "Green Thumb Industries", "url": "https://boards.greenhouse.io/embed/job_board?for=gtigrows"},
-    {"name": "Trulieve", "url": "https://boards.greenhouse.io/embed/job_board?for=trulieve"},
-    {"name": "TerrAscend", "url": "https://boards.greenhouse.io/embed/job_board?for=terrascend"}
-]
-
-jobs = []
-seen_jobs = set()
-
-# =========================
-# ✅ GREENHOUSE SCRAPER
-# =========================
-
-for company in companies:
-    try:
-        response = requests.get(company["url"], headers=headers)
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        for link in soup.find_all("a"):
-            text = link.text.strip()
-            href = link.get("href")
-
-            if href and "/jobs/" in href and text:
-                lower_text = text.lower()
-
-                if any(x in lower_text for x in ["director", "operations", "project"]):
-
-                    if href.startswith("/"):
-                        href = "https://boards.greenhouse.io" + href
-
-                    job_key = (company["name"], text)
-
-                    if job_key not in seen_jobs:
-                        seen_jobs.add(job_key)
-
-                        jobs.append([
-                            company["name"],
-                            text,
-                            "Relevant Role",
-                            "Unknown",
-                            datetime.today().strftime('%Y-%m-%d'),
-                            href
-                        ])
-
-    except Exception as e:
-        print(f"Error scraping {company['name']}: {e}")
-
-# =========================
-# ✅ NUGWORK SCRAPER
-# =========================
-
-try:
-    url = "https://nugwork.net"
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    for link in soup.find_all("a"):
-        text = link.text.strip()
-        href = link.get("href")
-
-        if text and href:
-            lower_text = text.lower()
-
-            if any(x in lower_text for x in ["director", "operations", "project"]):
-
-                job_key = ("NugWork", text)
-
-                if job_key not in seen_jobs:
-                    seen_jobs.add(job_key)
-
-                    if href.startswith("/"):
-                        href = "https://nugwork.net" + href
-
-                    jobs.append([
-                        "Various (NugWork)",
-                        text,
-                        "Job Board",
-                        "Unknown",
-                        datetime.today().strftime('%Y-%m-%d'),
-                        href
-                    ])
-
-except Exception as e:
-    print("Error scraping NugWork:", e)
-
-# =========================
-# ✅ WRITE JOBS TO SHEET
-# =========================
-
-print("DEBUG - Jobs found:", len(jobs))
-
-sheet.resize(rows=1)
-
-if jobs:
-    sheet.append_rows(jobs)
-
-print("✅ Jobs written:", len(jobs))
-
-# =========================
-# ✅ FINANCIALS SCRAPER (ALL MSOs)
-# =========================
-
-tickers = {
-    "Curaleaf": "CURLF",
-    "Cresco Labs": "CRLBF",
-    "Green Thumb Industries": "GTBIF",
-    "Trulieve": "TCNNF",
-    "Verano": "VRNOF",
-    "Ayr Wellness": "AYRWF",
-    "Jushi": "JUSHF",
-    "TerrAscend": "TRSSF",
-    "Columbia Care": "CCHWF"
-}
-
-financials_data = []
-
-for company, ticker in tickers.items():
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-
-        revenue = info.get("totalRevenue", "N/A")
-        ebitda = info.get("ebitda", "N/A")
-        net_income = info.get("netIncomeToCommon", "N/A")
-        cash = info.get("totalCash", "N/A")
-
-        financials_data.append([
-            company,
-            revenue,
-            ebitda,
-            net_income,
-            cash,
-            datetime.today().strftime('%Y-%m-%d')
-        ])
-
-    except Exception as e:
-        print(f"Error fetching {company}: {e}")
-
-print("DEBUG - Financial rows:", len(financials_data))
-
-financials_sheet.resize(rows=1)
-
-if financials_data:
-    financials_sheet.append_rows(financials_data)
-
-print("✅ Financials written:", len(financials_data))
-
+print("✅ WRITE COMPLETE")

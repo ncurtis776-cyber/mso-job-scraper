@@ -3,10 +3,12 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
+import os
+import json
 import yfinance as yf
 
 # =========================
-# ✅ GOOGLE SHEETS SETUP
+# ✅ GOOGLE AUTH (GITHUB SECRET)
 # =========================
 
 scopes = [
@@ -14,26 +16,32 @@ scopes = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-
-import os
-import json
-
 creds_dict = json.loads(os.environ["GOOGLE_CREDS"])
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-
 client = gspread.authorize(creds)
 
+# ✅ CONNECT TO SHEETS
 sheet = client.open("Cannabis MSO Intelligence Dashboard").worksheet("Jobs")
 financials_sheet = client.open("Cannabis MSO Intelligence Dashboard").worksheet("Financials")
 
 # =========================
-# ✅ COMPANY SOURCES (GREENHOUSE)
+# ✅ HEADERS (FIX GITHUB SCRAPING)
+# =========================
+
+headers = {
+    "User-Agent": "Mozilla/5.0"
+}
+
+# =========================
+# ✅ COMPANY SOURCES (TOP MSOs)
 # =========================
 
 companies = [
     {"name": "Curaleaf", "url": "https://boards.greenhouse.io/embed/job_board?for=curaleaf"},
     {"name": "Cresco Labs", "url": "https://boards.greenhouse.io/embed/job_board?for=crescolabs"},
-    {"name": "Green Thumb Industries", "url": "https://boards.greenhouse.io/embed/job_board?for=gtigrows"}
+    {"name": "Green Thumb Industries", "url": "https://boards.greenhouse.io/embed/job_board?for=gtigrows"},
+    {"name": "Trulieve", "url": "https://boards.greenhouse.io/embed/job_board?for=trulieve"},
+    {"name": "TerrAscend", "url": "https://boards.greenhouse.io/embed/job_board?for=terrascend"}
 ]
 
 jobs = []
@@ -45,7 +53,7 @@ seen_jobs = set()
 
 for company in companies:
     try:
-        response = requests.get(company["url"])
+        response = requests.get(company["url"], headers=headers)
         soup = BeautifulSoup(response.text, "html.parser")
 
         for link in soup.find_all("a"):
@@ -83,7 +91,7 @@ for company in companies:
 
 try:
     url = "https://nugwork.net"
-    response = requests.get(url)
+    response = requests.get(url, headers=headers)
     soup = BeautifulSoup(response.text, "html.parser")
 
     for link in soup.find_all("a"):
@@ -119,12 +127,14 @@ except Exception as e:
 # ✅ WRITE JOBS TO SHEET
 # =========================
 
+print("DEBUG - Jobs found:", len(jobs))
+
 sheet.resize(rows=1)
 
 if jobs:
     sheet.append_rows(jobs)
 
-print("✅ Jobs updated:", len(jobs))
+print("✅ Jobs written:", len(jobs))
 
 # =========================
 # ✅ FINANCIALS SCRAPER (ALL MSOs)
@@ -166,13 +176,11 @@ for company, ticker in tickers.items():
     except Exception as e:
         print(f"Error fetching {company}: {e}")
 
-# =========================
-# ✅ WRITE FINANCIALS TO SHEET
-# =========================
+print("DEBUG - Financial rows:", len(financials_data))
 
 financials_sheet.resize(rows=1)
 
 if financials_data:
     financials_sheet.append_rows(financials_data)
 
-print("✅ Financials updated:", len(financials_data))
+print("✅ Financials written:", len(financials_data))

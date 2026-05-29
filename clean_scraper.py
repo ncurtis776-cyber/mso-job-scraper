@@ -31,19 +31,20 @@ financials_sheet = client.open_by_url(SHEET_URL).worksheet("Financials")
 print("✅ SHEET CONNECTED")
 
 # =========================
-# ✅ HEADERS (avoid scraping block)
+# ✅ HEADERS
 # =========================
 headers = {"User-Agent": "Mozilla/5.0"}
 
 # =========================
-# ✅ MSO COMPANIES
+# ✅ EXPANDED MSO COMPANIES
 # =========================
 companies = [
     {"name": "Curaleaf", "url": "https://boards.greenhouse.io/embed/job_board?for=curaleaf"},
     {"name": "Cresco Labs", "url": "https://boards.greenhouse.io/embed/job_board?for=crescolabs"},
     {"name": "Green Thumb Industries", "url": "https://boards.greenhouse.io/embed/job_board?for=gtigrows"},
     {"name": "Trulieve", "url": "https://boards.greenhouse.io/embed/job_board?for=trulieve"},
-    {"name": "TerrAscend", "url": "https://boards.greenhouse.io/embed/job_board?for=terrascend"}
+    {"name": "TerrAscend", "url": "https://boards.greenhouse.io/embed/job_board?for=terrascend"},
+    {"name": "Ayr Wellness", "url": "https://boards.greenhouse.io/embed/job_board?for=ayrwellness"}
 ]
 
 jobs = []
@@ -120,6 +121,29 @@ try:
 except Exception as e:
     print("NugWork error:", e)
 
+# =========================
+# ✅ INDEED SCRAPER (NEW)
+# =========================
+try:
+    url = "https://www.indeed.com/jobs?q=cannabis+director+operations"
+    res = requests.get(url, headers=headers)
+    soup = BeautifulSoup(res.text, "html.parser")
+
+    for link in soup.find_all("a"):
+        title = link.text.strip()
+
+        if title and ("director" in title.lower() or "operations" in title.lower()):
+            jobs.append([
+                "Indeed",
+                title,
+                "Job Board",
+                "Unknown",
+                datetime.today().strftime('%Y-%m-%d'),
+                "https://indeed.com"
+            ])
+except Exception as e:
+    print("Indeed error:", e)
+
 print("✅ JOBS FOUND:", len(jobs))
 
 # =========================
@@ -133,7 +157,7 @@ if jobs:
 print("✅ JOBS WRITTEN")
 
 # =========================
-# ✅ FINANCIALS (ALL MSOs)
+# ✅ FINANCIALS (UNCHANGED BASE)
 # =========================
 tickers = {
     "Curaleaf": "CURLF",

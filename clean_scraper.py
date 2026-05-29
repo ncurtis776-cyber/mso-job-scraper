@@ -19,11 +19,15 @@ scopes = [
 creds_dict = json.loads(os.environ["GOOGLE_CREDS"])
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 client = gspread.authorize(creds)
+sheet.append_row(["TEST WRITE", "IF YOU SEE THIS = CONNECTION WORKS"])
+print("DEBUG: TEST ROW WRITTEN")
 
 # ✅ CONNECT TO SHEETS
 sheet = client.open("Cannabis MSO Intelligence Dashboard").worksheet("Jobs")
-financials_sheet = client.open("Cannabis MSO Intelligence Dashboard").worksheet("Financials")
 
+financials_sheet = client.open("Cannabis MSO Intelligence Dashboard").worksheet("Financials")
+financials_sheet.append_row(["TEST FINANCIAL", "WORKING"])
+print("DEBUG: FINANCIAL TEST WRITTEN")
 # =========================
 # ✅ HEADERS (FIX GITHUB SCRAPING)
 # =========================
@@ -184,3 +188,4 @@ if financials_data:
     financials_sheet.append_rows(financials_data)
 
 print("✅ Financials written:", len(financials_data))
+

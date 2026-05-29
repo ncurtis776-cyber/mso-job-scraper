@@ -17,9 +17,9 @@ jobs:
           python-version: "3.10"
 
       - name: Install
-        run: pip install requests beautifulsoup4 gspread google-auth
+        run: pip install requests beautifulsoup4 gspread google-auth yfinance
 
       - name: Run script
         env:
           GOOGLE_CREDS: ${{ secrets.GOOGLE_CREDS }}
-        run: python clean_scraper.py
+        run: python mso_jobs_scraper.py

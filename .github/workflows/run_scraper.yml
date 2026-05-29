@@ -22,4 +22,4 @@ jobs:
       - name: Run script
         env:
           GOOGLE_CREDS: ${{ secrets.GOOGLE_CREDS }}
-        run: python mso_jobs_scraper.py
+       run: python clean_scraper.py

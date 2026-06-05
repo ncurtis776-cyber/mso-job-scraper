@@ -7,7 +7,7 @@ import os
 import json
 import yfinance as yf
 
-print("START FULL SCRIPT")
+print("START FULL SYSTEM")
 
 # =========================
 # ✅ AUTH
@@ -22,22 +22,17 @@ scopes = [
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 client = gspread.authorize(creds)
 
-# ✅ SHEET CONNECTION
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1FkEqxI_ZhpdaUD1AxyV_oGTW3mHXo-sBb4FKGSZ8hD0"
 
 jobs_sheet = client.open_by_url(SHEET_URL).worksheet("Jobs")
 financials_sheet = client.open_by_url(SHEET_URL).worksheet("Financials")
 
-print("✅ SHEET CONNECTED")
-
-# =========================
-# ✅ HEADERS
-# =========================
 headers = {"User-Agent": "Mozilla/5.0"}
 
 # =========================
-# ✅ EXPANDED MSO COMPANIES
+# ✅ JOB SOURCES
 # =========================
+
 companies = [
     {"name": "Curaleaf", "url": "https://boards.greenhouse.io/embed/job_board?for=curaleaf"},
     {"name": "Cresco Labs", "url": "https://boards.greenhouse.io/embed/job_board?for=crescolabs"},
@@ -51,7 +46,7 @@ jobs = []
 seen = set()
 
 # =========================
-# ✅ GREENHOUSE SCRAPER
+# ✅ GREENHOUSE
 # =========================
 for company in companies:
     try:
@@ -59,66 +54,66 @@ for company in companies:
         soup = BeautifulSoup(res.text, "html.parser")
 
         for link in soup.find_all("a"):
-            title = link.text.strip()
+            raw = link.text.strip()
             href = link.get("href")
 
-            if href and "/jobs/" in href and title:
-                lt = title.lower()
+            if not raw or not href or "/jobs/" not in href:
+                continue
 
-                if any(x in lt for x in ["director", "operations", "project"]):
+            # ✅ split location cleanly
+            parts = raw.split(" - ")
+            title = parts[0]
+            location = parts[-1] if len(parts) > 1 else "Unknown"
 
-                    if href.startswith("/"):
-                        href = "https://boards.greenhouse.io" + href
+            lt = title.lower()
 
-                    key = title
+            if not any(x in lt for x in ["director", "vp", "head", "operations", "strategy", "project"]):
+                continue
 
-                    if key not in seen:
-                        seen.add(key)
+            if href.startswith("/"):
+                href = "https://boards.greenhouse.io" + href
 
-                        jobs.append([
-                            company["name"],
-                            title,
-                            "Relevant Role",
-                            "Unknown",
-                            datetime.today().strftime('%Y-%m-%d'),
-                            href
-                        ])
-    except Exception as e:
-        print("Error:", e)
+            if title in seen:
+                continue
+
+            seen.add(title)
+
+            jobs.append([
+                company["name"],
+                title,
+                "Relevant Role",
+                location,
+                datetime.today().strftime('%Y-%m-%d'),
+                href
+            ])
+    except:
+        pass
 
 # =========================
-# ✅ NUGWORK SCRAPER (STABLE VERSION)
+# ✅ NUGWORK (CLEAN)
 # =========================
 try:
-    url = "https://nugwork.net/jobs"
-    res = requests.get(url, headers=headers)
+    res = requests.get("https://nugwork.net/jobs", headers=headers)
     soup = BeautifulSoup(res.text, "html.parser")
 
-    links = soup.find_all("a")
-
-    for link in links:
+    for link in soup.find_all("a"):
         title = link.get_text(strip=True)
         href = link.get("href")
 
-        # ✅ basic validation first
         if not title or not href:
             continue
 
-        # ✅ ensure full link
         if href.startswith("/"):
             href = "https://nugwork.net" + href
 
-        # ✅ ONLY actual job pages (not categories)
         if "/jobs/" not in href:
             continue
 
         lt = title.lower()
 
-        # ✅ filter relevant roles
         if not any(x in lt for x in ["director", "operations", "project"]):
             continue
 
-        # ✅ avoid duplicates
         if title in seen:
             continue
 
@@ -132,16 +127,14 @@ try:
             datetime.today().strftime('%Y-%m-%d'),
             href
         ])
-
-except Exception as e:
-    print("NugWork error:", e)
+except:
+    pass
 
 # =========================
-# ✅ INDEED SCRAPER (NEW)
+# ✅ INDEED
 # =========================
 try:
-    url = "https://www.indeed.com/jobs?q=cannabis+director+operations"
-    res = requests.get(url, headers=headers)
+    res = requests.get("https://www.indeed.com/jobs?q=cannabis+director+operations", headers=headers)
     soup = BeautifulSoup(res.text, "html.parser")
 
     for link in soup.find_all("a"):
@@ -156,23 +149,17 @@ try:
                 datetime.today().strftime('%Y-%m-%d'),
                 "https://indeed.com"
             ])
-except Exception as e:
-    print("Indeed error:", e)
+except:
+    pass
 
-print("✅ JOBS FOUND:", len(jobs))
+print("JOBS:", len(jobs))
 
-# =========================
-# ✅ WRITE JOBS
-# =========================
 jobs_sheet.resize(rows=1)
-
 if jobs:
     jobs_sheet.append_rows(jobs)
 
-print("✅ JOBS WRITTEN")
-
 # =========================
-# ✅ FINANCIALS (UNCHANGED BASE)
+# ✅ FINANCIALS (IMPROVED FALLBACK)
 # =========================
 tickers = {
     "Curaleaf": "CURLF",
@@ -193,25 +180,36 @@ for name, ticker in tickers.items():
         stock = yf.Ticker(ticker)
         info = stock.info
 
+        revenue = info.get("totalRevenue")
+        ebitda = info.get("ebitda")
+        net_income = info.get("netIncomeToCommon")
+        cash = info.get("totalCash")
+
+        # ✅ fallback if missing
+        if revenue is None:
+            revenue = "Missing"
+        if ebitda is None:
+            ebitda = "Missing"
+        if net_income is None:
+            net_income = "Missing"
+        if cash is None:
+            cash = "Missing"
+
         financials.append([
             name,
-            info.get("totalRevenue", "N/A"),
-            info.get("ebitda", "N/A"),
-            info.get("netIncomeToCommon", "N/A"),
-            info.get("totalCash", "N/A"),
+            revenue,
+            ebitda,
+            net_income,
+            cash,
             datetime.today().strftime('%Y-%m-%d')
         ])
-    except Exception as e:
-        print("Finance error:", e)
+    except:
+        pass
 
-print("✅ FINANCIAL ROWS:", len(financials))
+print("FIN:", len(financials))
 
-# =========================
-# ✅ WRITE FINANCIALS
-# =========================
 financials_sheet.resize(rows=1)
-
 if financials:
     financials_sheet.append_rows(financials)
 
-print("✅ FINANCIALS WRITTEN")
+print("✅ SYSTEM COMPLETE")

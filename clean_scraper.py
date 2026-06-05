@@ -7,7 +7,7 @@ import os
 import json
 import yfinance as yf
 
-print("START FULL SYSTEM")
+print("START SYSTEM")
 
 # =========================
 # ✅ AUTH
@@ -30,25 +30,37 @@ financials_sheet = client.open_by_url(SHEET_URL).worksheet("Financials")
 headers = {"User-Agent": "Mozilla/5.0"}
 
 # =========================
-# ✅ JOB COLLECTION
+# ✅ ALL MAJOR MSOs
 # =========================
+mso_companies = [
+    {"name": "Curaleaf"},
+    {"name": "Cresco Labs"},
+    {"name": "Green Thumb Industries"},
+    {"name": "Trulieve"},
+    {"name": "Verano"},
+    {"name": "Ayr Wellness"},
+    {"name": "Jushi"},
+    {"name": "TerrAscend"},
+    {"name": "Columbia Care"}
+]
+
 jobs = []
 seen = set()
 
 # =========================
-# ✅ GREENHOUSE COMPANIES
+# ✅ GREENHOUSE (PRIMARY)
 # =========================
-greenhouse_companies = [
-    {"name": "Curaleaf", "url": "https://boards.greenhouse.io/embed/job_board?for=curaleaf"},
-    {"name": "Cresco Labs", "url": "https://boards.greenhouse.io/embed/job_board?for=crescolabs"},
-    {"name": "Green Thumb Industries", "url": "https://boards.greenhouse.io/embed/job_board?for=gtigrows"},
-    {"name": "Trulieve", "url": "https://boards.greenhouse.io/embed/job_board?for=trulieve"},
-    {"name": "TerrAscend", "url": "https://boards.greenhouse.io/embed/job_board?for=terrascend"},
+greenhouse_sources = [
+    ("Curaleaf", "https://boards.greenhouse.io/embed/job_board?for=curaleaf"),
+    ("Cresco Labs", "https://boards.greenhouse.io/embed/job_board?for=crescolabs"),
+    ("Green Thumb Industries", "https://boards.greenhouse.io/embed/job_board?for=gtigrows"),
+    ("Trulieve", "https://boards.greenhouse.io/embed/job_board?for=trulieve"),
+    ("TerrAscend", "https://boards.greenhouse.io/embed/job_board?for=terrascend"),
 ]
 
-for company in greenhouse_companies:
+for name, url in greenhouse_sources:
     try:
-        res = requests.get(company["url"], headers=headers)
+        res = requests.get(url, headers=headers)
         soup = BeautifulSoup(res.text, "html.parser")
 
         for link in soup.find_all("a"):
@@ -62,7 +74,7 @@ for company in greenhouse_companies:
             title = parts[0]
             location = parts[-1] if len(parts) > 1 else "Unknown"
 
-            if not any(x in title.lower() for x in ["director","vp","operations","strategy","project"]):
+            if not any(x in title.lower() for x in ["director","vp","head","operations","strategy"]):
                 continue
 
             if href.startswith("/"):
@@ -74,49 +86,9 @@ for company in greenhouse_companies:
             seen.add(title)
 
             jobs.append([
-                company["name"], title, "Relevant Role",
+                name, title, "Relevant Role",
                 location, datetime.today().strftime('%Y-%m-%d'), href
             ])
-    except:
-        pass
-
-# =========================
-# ✅ DIRECT CAREERS PAGE SCRAPERS (NEW)
-# =========================
-
-careers_sites = [
-    {"name": "Verano", "url": "https://www.verano.com/careers/"},
-    {"name": "Ayr Wellness", "url": "https://ayrwellness.com/careers/"},
-    {"name": "Jushi", "url": "https://jushico.com/careers/"}
-]
-
-for company in careers_sites:
-    try:
-        res = requests.get(company["url"], headers=headers)
-        soup = BeautifulSoup(res.text, "html.parser")
-
-        for link in soup.find_all("a"):
-            text = link.get_text(strip=True)
-            href = link.get("href")
-
-            if not text or not href:
-                continue
-
-            if any(x in text.lower() for x in ["director","operations","manager","vp"]):
-
-                if text in seen:
-                    continue
-
-                seen.add(text)
-
-                jobs.append([
-                    company["name"],
-                    text,
-                    "Company Site",
-                    "Unknown",
-                    datetime.today().strftime('%Y-%m-%d'),
-                    href if href.startswith("http") else company["url"]
-                ])
     except:
         pass
 
@@ -140,7 +112,7 @@ try:
         if "/jobs/" not in href:
             continue
 
-        if not any(x in title.lower() for x in ["director","operations","project"]):
+        if not any(x in title.lower() for x in ["director","operations"]):
             continue
 
         if title in seen:
@@ -149,21 +121,17 @@ try:
         seen.add(title)
 
         jobs.append([
-            "Various (NugWork)",
-            title,
-            "Job Board",
-            "Unknown",
-            datetime.today().strftime('%Y-%m-%d'),
-            href
+            "Various (NugWork)", title, "Job Board",
+            "Unknown", datetime.today().strftime('%Y-%m-%d'), href
         ])
 except:
     pass
 
 # =========================
-# ✅ INDEED
+# ✅ INDEED (WIDE NET)
 # =========================
 try:
-    res = requests.get("https://www.indeed.com/jobs?q=cannabis+operations+director", headers=headers)
+    res = requests.get("https://www.indeed.com/jobs?q=cannabis+director+operations", headers=headers)
     soup = BeautifulSoup(res.text, "html.parser")
 
     for link in soup.find_all("a"):
@@ -181,24 +149,25 @@ try:
 except:
     pass
 
-# =========================
-# ✅ WRITE JOBS
-# =========================
+print("JOBS:", len(jobs))
+
 jobs_sheet.resize(rows=1)
 if jobs:
     jobs_sheet.append_rows(jobs)
 
-print("✅ JOBS COMPLETE:", len(jobs))
-
 # =========================
 # ✅ FINANCIALS (HYBRID)
 # =========================
-
 tickers = {
     "Curaleaf": "CURLF",
     "Cresco Labs": "CRLBF",
     "Green Thumb Industries": "GTBIF",
-    "Trulieve": "TCNNF"
+    "Trulieve": "TCNNF",
+    "Verano": "VRNOF",
+    "Ayr Wellness": "AYRWF",
+    "Jushi": "JUSHF",
+    "TerrAscend": "TRSSF",
+    "Columbia Care": "CCHWF"
 }
 
 financials = []
@@ -210,50 +179,21 @@ for name, ticker in tickers.items():
 
         financials.append([
             name,
-            info.get("totalRevenue","Missing"),
-            info.get("ebitda","Missing"),
-            info.get("netIncomeToCommon","Missing"),
-            info.get("totalCash","Missing"),
+            info.get("totalRevenue", "Missing"),
+            info.get("ebitda", "Missing"),
+            info.get("netIncomeToCommon", "Missing"),
+            info.get("totalCash", "Missing"),
             datetime.today().strftime('%Y-%m-%d')
         ])
     except:
-        pass
+        financials.append([
+            name, "Missing", "Missing", "Missing", "Missing",
+            datetime.today().strftime('%Y-%m-%d')
+        ])
 
-# =========================
-# ✅ INVESTOR PAGES (NEW)
-# =========================
+print("FINANCIALS:", len(financials))
 
-investor_pages = [
-    {"name": "Curaleaf", "url": "https://ir.curaleaf.com/"},
-    {"name": "Trulieve", "url": "https://investors.trulieve.com/"}
-]
-
-for company in investor_pages:
-    try:
-        res = requests.get(company["url"], headers=headers)
-        soup = BeautifulSoup(res.text, "html.parser")
-
-        text = soup.get_text()
-
-        # ✅ crude extraction example
-        if "revenue" in text.lower():
-            financials.append([
-                company["name"],
-                "From Investor Page",
-                "See IR",
-                "See IR",
-                "See IR",
-                datetime.today().strftime('%Y-%m-%d')
-            ])
-    except:
-        pass
-
-# =========================
-# ✅ WRITE FINANCIALS
-# =========================
 financials_sheet.resize(rows=1)
+financials_sheet.append_rows(financials)
 
-if financials:
-    financials_sheet.append_rows(financials)
-
-print("✅ FINANCIALS COMPLETE:", len(financials))
+print("✅ SYSTEM COMPLETE")

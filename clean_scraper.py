@@ -25,6 +25,7 @@ sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1FkEqxI_Zhpda
 
 jobs_sheet = sheet.worksheet("Jobs")
 scores_sheet = sheet.worksheet("Scores")
+financials_sheet = sheet.worksheet("Financials")
 
 headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -119,7 +120,7 @@ def overall_label(x):
     else: return "High Risk"
 
 # ==========================================================
-# ✅ FINANCIALS + RISK + SCORES
+# ✅ FINANCIALS + SCORES
 # ==========================================================
 
 tickers = {
@@ -133,6 +134,7 @@ tickers = {
 }
 
 score_rows = []
+financial_rows = []
 
 def calc_risk(d):
     return round(
@@ -173,6 +175,15 @@ for name, ticker in tickers.items():
         ebit = f("Ebit")
         interest = abs(f("Interest Expense")) or 1
 
+        # ✅ STORE FINANCIAL TABLE
+        financial_rows.append([
+            name,
+            f"{round(rev/1e6,1)}M",
+            f"{round(ebit/1e6,1)}M",
+            f"{round(net/1e6,1)}M",
+            datetime.today().strftime('%Y-%m-%d')
+        ])
+
         de = debt/equity
         cr = assets/liab
         pm = net/rev
@@ -204,12 +215,11 @@ for name, ticker in tickers.items():
 
         score_rows.append([
             name,
-            financial_score,   # Fin
-            round(job_score,2),# Employee
-            round(risk_norm,2),# Risk
-            glass_score,       # Glassdoor
-            total,             # Total
-
+            financial_score,
+            round(job_score,2),
+            round(risk_norm,2),
+            glass_score,
+            total,
             financial_label(financial_score),
             job_label(job_score),
             risk_label(risk_norm),
@@ -220,11 +230,13 @@ for name, ticker in tickers.items():
         print("Error:", name)
 
 # =========================
-# ✅ WRITE
+# ✅ WRITE TABLES
 # =========================
-scores_sheet.resize(rows=1)
 
-if score_rows:
-    scores_sheet.append_rows(score_rows)
+scores_sheet.resize(rows=1)
+scores_sheet.append_rows(score_rows)
+
+financials_sheet.resize(rows=1)
+financials_sheet.append_rows(financial_rows)
 
 print("✅ FINAL SYSTEM COMPLETE")

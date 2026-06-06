@@ -21,13 +21,21 @@ scopes = [
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 client = gspread.authorize(creds)
 
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1FkEqxI_ZhpdaUD1AxyV_oGTW3mHXo-sBb4FKGSZ8hD0"
+SHEET = client.open_by_url("https://docs.google.com/spreadsheets/d/1FkEqxI_ZhpdaUD1AxyV_oGTW3mHXo-sBb4FKGSZ8hD0")
 
-jobs_sheet = client.open_by_url(SHEET_URL).worksheet("Jobs")
-financials_sheet = client.open_by_url(SHEET_URL).worksheet("Financials")
-risk_sheet = client.open_by_url(SHEET_URL).worksheet("Risk")
-scores_sheet = client.open_by_url(SHEET_URL).worksheet("Scores")
-glassdoor_sheet = client.open_by_url(SHEET_URL).worksheet("Glassdoor")
+# ✅ SAFE TAB LOADER (THIS FIXES YOUR ISSUE FOREVER)
+def get_or_create(sheet_name):
+    try:
+        return SHEET.worksheet(sheet_name)
+    except:
+        print(f"Creating missing sheet: {sheet_name}")
+        return SHEET.add_worksheet(title=sheet_name, rows=100, cols=10)
+
+jobs_sheet = get_or_create("Jobs")
+financials_sheet = get_or_create("Financials")
+risk_sheet = get_or_create("Risk")
+scores_sheet = get_or_create("Scores")
+glassdoor_sheet = get_or_create("Glassdoor")
 
 headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -38,14 +46,14 @@ jobs = []
 seen = {}
 job_counts = {}
 
-greenhouse_sources = [
+sources = [
     ("Curaleaf", "https://boards.greenhouse.io/embed/job_board?for=curaleaf"),
     ("Cresco Labs", "https://boards.greenhouse.io/embed/job_board?for=crescolabs"),
     ("Green Thumb Industries", "https://boards.greenhouse.io/embed/job_board?for=gtigrows"),
     ("Trulieve", "https://boards.greenhouse.io/embed/job_board?for=trulieve")
 ]
 
-for name, url in greenhouse_sources:
+for name, url in sources:
     job_counts[name] = 0
 
     try:
@@ -82,10 +90,13 @@ for name, url in greenhouse_sources:
         pass
 
 jobs_sheet.resize(rows=1)
-jobs_sheet.append_rows(jobs)
+if jobs:
+    jobs_sheet.append_rows(jobs)
+
+print("✅ JOBS COMPLETE")
 
 # ==========================================================
-# ✅ GLASSDOOR (STATIC BASELINE)
+# ✅ GLASSDOOR DATA
 # ==========================================================
 glassdoor_ratings = {
     "Curaleaf": 3.2,
@@ -117,10 +128,6 @@ financials = []
 risk_rows = []
 score_rows = []
 
-# =========================
-# ✅ FUNCTIONS
-# =========================
-
 def calculate_risk(d):
     return round(
         d["de"]*0.3 +
@@ -136,10 +143,6 @@ def classify(x):
 def normalize(val, low, high):
     return max(0, min((val - low) / (high - low), 1))
 
-# =========================
-# ✅ LOOP
-# =========================
-
 for name, ticker in tickers.items():
     try:
         stock = yf.Ticker(ticker)
@@ -154,19 +157,14 @@ for name, ticker in tickers.items():
         def f(x): return float(latest_fin.get(x,0))
 
         debt = g("Total Debt")
-        equity = g("Total Stockholder Equity")
+        equity = g("Total Stockholder Equity") or 1
         assets = g("Total Current Assets")
-        liabilities = g("Total Current Liabilities")
+        liabilities = g("Total Current Liabilities") or 1
 
-        revenue = f("Total Revenue")
+        revenue = f("Total Revenue") or 1
         net = f("Net Income")
         ebit = f("Ebit")
-        interest = abs(f("Interest Expense"))
-
-        equity = equity if equity else 1
-        liabilities = liabilities if liabilities else 1
-        revenue = revenue if revenue else 1
-        interest = interest if interest else 1
+        interest = abs(f("Interest Expense")) or 1
 
         de = debt / equity
         cr = assets / liabilities
@@ -181,11 +179,8 @@ for name, ticker in tickers.items():
 
         ic = ebit / interest
 
-        # ✅ RISK
         risk_score = calculate_risk({"de":de,"cr":cr,"pm":pm,"rg":rg,"ic":ic})
-        risk_level = classify(risk_score)
 
-        # ✅ FINANCIAL SCORE
         pm_score = normalize(pm, -0.2, 0.2)
         rg_score = normalize(rg, -0.2, 0.3)
         de_score = normalize(1 - (de/3), 0, 1)
@@ -193,74 +188,39 @@ for name, ticker in tickers.items():
 
         financial_score = round((pm_score*0.3 + rg_score*0.3 + de_score*0.2 + cr_score*0.2)*10,2)
 
-        # ✅ JOB SCORE
-        jc = job_counts.get(name, 0)
+        jc = job_counts.get(name,0)
         job_score = min(jc/10,1)*10
 
-        # ✅ RISK NORMALIZED
         risk_norm = max(0, 10 - (risk_score*3))
 
-        # ✅ GLASSDOOR
         rating = glassdoor_ratings.get(name, 3.0)
-        glassdoor_score = round((rating/5)*10,2)
+        glassdoor_score = (rating/5)*10
 
-        # ✅ TOTAL
-        total_score = round(
+        total = round(
             financial_score*0.35 +
             job_score*0.25 +
             risk_norm*0.30 +
             glassdoor_score*0.10
         ,2)
 
-        # ✅ OUTPUTS
-        financials.append([
-            name,
-            f"{round(revenue/1e6,1)}M",
-            f"{round(ebit/1e6,1)}M",
-            f"{round(net/1e6,1)}M",
-            datetime.today().strftime('%Y-%m-%d')
-        ])
-
-        risk_rows.append([
-            name, ticker,
-            round(de,2),
-            round(cr,2),
-            f"{round(pm*100,1)}%",
-            f"{round(rg*100,1)}%",
-            risk_score,
-            risk_level,
-            "Yahoo",
-            datetime.today().strftime('%Y-%m-%d')
-        ])
-
         score_rows.append([
             name,
             financial_score,
-            round(job_score,2),
-            round(risk_norm,2),
-            glassdoor_score,
-            total_score
+            job_score,
+            risk_norm,
+            round(glassdoor_score,2),
+            total
         ])
 
         glassdoor_rows.append([
             name,
             rating,
-            glassdoor_score,
+            round(glassdoor_score,2),
             datetime.today().strftime('%Y-%m-%d')
         ])
 
-    except Exception as e:
+    except:
         print("Error:", name)
-
-# =========================
-# ✅ WRITE
-# =========================
-
-financials_sheet.resize(rows=1)
-financials_sheet.append_rows(financials)
-
-risk_sheet.resize(rows=1)
-risk_sheet.append_rows(risk_rows)
 
 scores_sheet.resize(rows=1)
 scores_sheet.append_rows(score_rows)

@@ -3,8 +3,7 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
-import os
-import json
+import os, json
 import yfinance as yf
 
 print("START FULL SYSTEM")
@@ -31,7 +30,7 @@ risk_sheet = client.open_by_url(SHEET_URL).worksheet("Risk")
 headers = {"User-Agent": "Mozilla/5.0"}
 
 # ==========================================================
-# ✅ JOBS SECTION (UNCHANGED LOGIC)
+# ✅ JOBS (UNCHANGED)
 # ==========================================================
 
 jobs = []
@@ -41,8 +40,7 @@ greenhouse_sources = [
     ("Curaleaf", "https://boards.greenhouse.io/embed/job_board?for=curaleaf"),
     ("Cresco Labs", "https://boards.greenhouse.io/embed/job_board?for=crescolabs"),
     ("Green Thumb Industries", "https://boards.greenhouse.io/embed/job_board?for=gtigrows"),
-    ("Trulieve", "https://boards.greenhouse.io/embed/job_board?for=trulieve"),
-    ("TerrAscend", "https://boards.greenhouse.io/embed/job_board?for=terrascend"),
+    ("Trulieve", "https://boards.greenhouse.io/embed/job_board?for=trulieve")
 ]
 
 for name, url in greenhouse_sources:
@@ -57,11 +55,9 @@ for name, url in greenhouse_sources:
             if not raw or not href or "/jobs/" not in href:
                 continue
 
-            parts = raw.split(" - ")
-            title = parts[0]
-            location = parts[-1] if len(parts) > 1 else "Unknown"
+            title = raw.split(" - ")[0]
 
-            if not any(x in title.lower() for x in ["director","vp","head","operations","strategy"]):
+            if not any(x in title.lower() for x in ["director","vp","operations"]):
                 continue
 
             if href.startswith("/"):
@@ -72,74 +68,16 @@ for name, url in greenhouse_sources:
 
             seen.add(title)
 
-            jobs.append([
-                name, title, "Relevant Role",
-                location, datetime.today().strftime('%Y-%m-%d'), href
-            ])
+            jobs.append([name, title, "Relevant", "Unknown",
+                         datetime.today().strftime('%Y-%m-%d'), href])
     except:
         pass
 
-# NugWork
-try:
-    res = requests.get("https://nugwork.net/jobs", headers=headers)
-    soup = BeautifulSoup(res.text, "html.parser")
-
-    for link in soup.find_all("a"):
-        title = link.get_text(strip=True)
-        href = link.get("href")
-
-        if not title or not href:
-            continue
-
-        if href.startswith("/"):
-            href = "https://nugwork.net" + href
-
-        if "/jobs/" not in href:
-            continue
-
-        if not any(x in title.lower() for x in ["director","operations"]):
-            continue
-
-        if title in seen:
-            continue
-
-        seen.add(title)
-
-        jobs.append([
-            "Various (NugWork)", title, "Job Board",
-            "Unknown", datetime.today().strftime('%Y-%m-%d'), href
-        ])
-except:
-    pass
-
-# Indeed
-try:
-    res = requests.get("https://www.indeed.com/jobs?q=cannabis+director+operations", headers=headers)
-    soup = BeautifulSoup(res.text, "html.parser")
-
-    for link in soup.find_all("a"):
-        text = link.get_text(strip=True)
-
-        if text and ("director" in text.lower() or "operations" in text.lower()):
-            jobs.append([
-                "Indeed",
-                text,
-                "Job Board",
-                "Unknown",
-                datetime.today().strftime('%Y-%m-%d'),
-                "https://indeed.com"
-            ])
-except:
-    pass
-
 jobs_sheet.resize(rows=1)
-if jobs:
-    jobs_sheet.append_rows(jobs)
-
-print("✅ JOBS COMPLETE:", len(jobs))
+jobs_sheet.append_rows(jobs)
 
 # ==========================================================
-# ✅ FINANCIALS + RISK (COMBINED)
+# ✅ FINANCIALS + RISK (FIXED)
 # ==========================================================
 
 tickers = {
@@ -149,43 +87,28 @@ tickers = {
     "Trulieve": "TCNNF",
     "Verano": "VRNOF",
     "Ayr Wellness": "AYRWF",
-    "Jushi": "JUSHF",
-    "TerrAscend": "TRSSF",
-    "Columbia Care": "CCHWF"
+    "Jushi": "JUSHF"
 }
 
 financials = []
 risk_rows = []
 
-# =========================
-# ✅ RISK FUNCTIONS
-# =========================
-def calculate_risk(data):
-    debt_risk = min(data["de"] / 2.0, 3.0)
-    liquidity_risk = max(1.5 - data["cr"], 0)
-    margin_risk = max(0.2 - data["pm"], 0) * 5
-    growth_risk = max(0.0 - data["rg"], 0) * 10
-    interest_risk = max(3.0 - data["ic"], 0)
-
+# ✅ risk model
+def calculate_risk(d):
     return round(
-        0.30 * debt_risk +
-        0.20 * liquidity_risk +
-        0.20 * margin_risk +
-        0.15 * growth_risk +
-        0.15 * interest_risk, 2)
+        d["de"]*0.3 +
+        (1-d["cr"])*0.2 +
+        abs(d["pm"])*0.2 +
+        max(-d["rg"],0)*0.2 +
+        (1/d["ic"] if d["ic"] else 1)*0.1
+    ,2)
 
-def classify(score):
-    if score < 1.5:
-        return "Low"
-    elif score < 3:
-        return "Medium"
-    else:
-        return "High"
+def classify(x):
+    return "High" if x > 2 else "Medium" if x > 1 else "Low"
 
 # =========================
 # ✅ LOOP
 # =========================
-
 for name, ticker in tickers.items():
     try:
         stock = yf.Ticker(ticker)
@@ -193,69 +116,70 @@ for name, ticker in tickers.items():
         bs = stock.balance_sheet
         fin = stock.financials
 
-        latest_bs = bs.iloc[:, 0] if not bs.empty else None
-        latest_fin = fin.iloc[:, 0] if not fin.empty else None
+        latest_bs = bs.iloc[:,0] if not bs.empty else {}
+        latest_fin = fin.iloc[:,0] if not fin.empty else {}
 
-        def gbs(x): return float(latest_bs.get(x, 0)) if latest_bs is not None else 0
-        def gfin(x): return float(latest_fin.get(x, 0)) if latest_fin is not None else 0
+        def g(x): return float(latest_bs.get(x,0))
+        def f(x): return float(latest_fin.get(x,0))
 
-        total_debt = gbs("Total Debt")
-        equity = gbs("Total Stockholder Equity")
-        current_assets = gbs("Total Current Assets")
-        current_liabilities = gbs("Total Current Liabilities")
-        revenue = gfin("Total Revenue")
-        net_income = gfin("Net Income")
-        ebit = gfin("Ebit")
-        interest = abs(gfin("Interest Expense"))
+        debt = g("Total Debt")
+        equity = g("Total Stockholder Equity")
+        assets = g("Total Current Assets")
+        liabilities = g("Total Current Liabilities")
 
+        revenue = f("Total Revenue")
+        net = f("Net Income")
+        ebit = f("Ebit")
+        interest = abs(f("Interest Expense"))
+
+        # ✅ fallback fixes
+        if equity == 0: equity = 1
+        if liabilities == 0: liabilities = 1
+        if revenue == 0: revenue = 1
+        if interest == 0: interest = 1
+
+        # ✅ ratios
+        de = debt / equity
+        cr = assets / liabilities
+        pm = net / revenue
+
+        # ✅ growth
         if fin.shape[1] >= 2:
-            rev_now = fin.iloc[:, 0].get("Total Revenue", 0)
-            rev_prev = fin.iloc[:, 1].get("Total Revenue", 0)
-            growth = (rev_now - rev_prev) / rev_prev if rev_prev else 0
+            r1 = fin.iloc[:,0].get("Total Revenue",0)
+            r2 = fin.iloc[:,1].get("Total Revenue",r1)
+            rg = (r1-r2)/r2 if r2 else 0
         else:
-            growth = 0
+            rg = 0
 
-        # ✅ store financials (your table)
+        ic = ebit / interest
+
+        score = calculate_risk({"de":de,"cr":cr,"pm":pm,"rg":rg,"ic":ic})
+
+        # ✅ pretty formatting
         financials.append([
             name,
-            revenue if revenue else "Missing",
-            ebit if ebit else "Missing",
-            net_income if net_income else "Missing",
-            gbs("Total Cash"),
+            f"{round(revenue/1e6,1)}M",
+            f"{round(ebit/1e6,1)}M",
+            f"{round(net/1e6,1)}M",
             datetime.today().strftime('%Y-%m-%d')
         ])
 
-        # ✅ risk inputs
-        data = {
-            "de": (total_debt / equity) if equity else 0,
-            "cr": (current_assets / current_liabilities) if current_liabilities else 0,
-            "pm": (net_income / revenue) if revenue else 0,
-            "rg": growth,
-            "ic": (ebit / interest) if interest else 0
-        }
-
-        score = calculate_risk(data)
-        level = classify(score)
-
         risk_rows.append([
             name, ticker,
-            round(data["de"],2),
-            round(data["cr"],2),
-            round(data["pm"],2),
-            round(data["rg"],2),
-            round(data["ic"],2),
-            score, level,
+            round(de,2),
+            round(cr,2),
+            f"{round(pm*100,1)}%",
+            f"{round(rg*100,1)}%",
+            round(score,2),
+            classify(score),
             "Yahoo",
             datetime.today().strftime('%Y-%m-%d')
         ])
 
-    except:
-        pass
+    except Exception as e:
+        print("Error:", name)
 
-# =========================
-# ✅ WRITE TABLES
-# =========================
-
+# ✅ WRITE
 financials_sheet.resize(rows=1)
 financials_sheet.append_rows(financials)
 

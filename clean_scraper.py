@@ -27,6 +27,7 @@ jobs_sheet = client.open_by_url(SHEET_URL).worksheet("Jobs")
 financials_sheet = client.open_by_url(SHEET_URL).worksheet("Financials")
 risk_sheet = client.open_by_url(SHEET_URL).worksheet("Risk")
 scores_sheet = client.open_by_url(SHEET_URL).worksheet("Scores")
+glassdoor_sheet = client.open_by_url(SHEET_URL).worksheet("Glassdoor")
 
 headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -83,7 +84,20 @@ for name, url in greenhouse_sources:
 jobs_sheet.resize(rows=1)
 jobs_sheet.append_rows(jobs)
 
-print("✅ JOBS COMPLETE")
+# ==========================================================
+# ✅ GLASSDOOR (STATIC BASELINE)
+# ==========================================================
+glassdoor_ratings = {
+    "Curaleaf": 3.2,
+    "Cresco Labs": 3.1,
+    "Green Thumb Industries": 3.5,
+    "Trulieve": 3.0,
+    "Verano": 2.9,
+    "Ayr Wellness": 2.8,
+    "Jushi": 3.3
+}
+
+glassdoor_rows = []
 
 # ==========================================================
 # ✅ FINANCIALS + RISK + SCORES
@@ -149,18 +163,15 @@ for name, ticker in tickers.items():
         ebit = f("Ebit")
         interest = abs(f("Interest Expense"))
 
-        # ✅ fallback fixes
         equity = equity if equity else 1
         liabilities = liabilities if liabilities else 1
         revenue = revenue if revenue else 1
         interest = interest if interest else 1
 
-        # ✅ ratios
         de = debt / equity
         cr = assets / liabilities
         pm = net / revenue
 
-        # ✅ growth
         if fin.shape[1] >= 2:
             r1 = fin.iloc[:,0].get("Total Revenue",0)
             r2 = fin.iloc[:,1].get("Total Revenue",r1)
@@ -174,31 +185,34 @@ for name, ticker in tickers.items():
         risk_score = calculate_risk({"de":de,"cr":cr,"pm":pm,"rg":rg,"ic":ic})
         risk_level = classify(risk_score)
 
-        # ✅ FINANCIAL SCORE (0–10)
+        # ✅ FINANCIAL SCORE
         pm_score = normalize(pm, -0.2, 0.2)
         rg_score = normalize(rg, -0.2, 0.3)
         de_score = normalize(1 - (de/3), 0, 1)
         cr_score = normalize(cr, 0, 2)
 
-        financial_score = round(
-            (pm_score*0.3 + rg_score*0.3 + de_score*0.2 + cr_score*0.2) * 10, 2
-        )
+        financial_score = round((pm_score*0.3 + rg_score*0.3 + de_score*0.2 + cr_score*0.2)*10,2)
 
         # ✅ JOB SCORE
         jc = job_counts.get(name, 0)
-        job_score = min(jc / 10, 1) * 10
+        job_score = min(jc/10,1)*10
 
         # ✅ RISK NORMALIZED
-        risk_norm = max(0, 10 - (risk_score * 3))
+        risk_norm = max(0, 10 - (risk_score*3))
 
-        # ✅ TOTAL SCORE
+        # ✅ GLASSDOOR
+        rating = glassdoor_ratings.get(name, 3.0)
+        glassdoor_score = round((rating/5)*10,2)
+
+        # ✅ TOTAL
         total_score = round(
-            financial_score * 0.35 +
-            job_score * 0.25 +
-            risk_norm * 0.40,
-        2)
+            financial_score*0.35 +
+            job_score*0.25 +
+            risk_norm*0.30 +
+            glassdoor_score*0.10
+        ,2)
 
-        # ✅ STORE TABLES
+        # ✅ OUTPUTS
         financials.append([
             name,
             f"{round(revenue/1e6,1)}M",
@@ -224,15 +238,22 @@ for name, ticker in tickers.items():
             financial_score,
             round(job_score,2),
             round(risk_norm,2),
-            "N/A",   # Glassdoor placeholder
+            glassdoor_score,
             total_score
+        ])
+
+        glassdoor_rows.append([
+            name,
+            rating,
+            glassdoor_score,
+            datetime.today().strftime('%Y-%m-%d')
         ])
 
     except Exception as e:
         print("Error:", name)
 
 # =========================
-# ✅ WRITE EVERYTHING
+# ✅ WRITE
 # =========================
 
 financials_sheet.resize(rows=1)
@@ -243,5 +264,8 @@ risk_sheet.append_rows(risk_rows)
 
 scores_sheet.resize(rows=1)
 scores_sheet.append_rows(score_rows)
+
+glassdoor_sheet.resize(rows=1)
+glassdoor_sheet.append_rows(glassdoor_rows)
 
 print("✅ FULL SYSTEM COMPLETE")

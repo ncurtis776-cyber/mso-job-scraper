@@ -175,11 +175,21 @@ for name, ticker in tickers.items():
         ebit = f("Ebit")
         interest = abs(f("Interest Expense")) or 1
 
-        # ✅ STORE FINANCIAL TABLE
+        # ✅ EBITDA FIX
+        try:
+            ebitda = s.info.get("ebitda", None)
+        except:
+            ebitda = None
+
+        if not ebitda:
+            depreciation = f("Depreciation")
+            ebitda = ebit + depreciation
+
+        # ✅ FINANCIAL TABLE
         financial_rows.append([
             name,
             f"{round(rev/1e6,1)}M",
-            f"{round(ebit/1e6,1)}M",
+            f"{round(ebitda/1e6,1)}M",
             f"{round(net/1e6,1)}M",
             datetime.today().strftime('%Y-%m-%d')
         ])

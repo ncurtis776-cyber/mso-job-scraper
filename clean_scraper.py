@@ -21,9 +21,7 @@ scopes = [
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 client = gspread.authorize(creds)
 
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1FkEqxI_ZhpdaUD1AxyV_oGTW3mHXo-sBb4FKGSZ8hD0"
-
-sheet = client.open_by_url(SHEET_URL)
+sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1FkEqxI_ZhpdaUD1AxyV_oGTW3mHXo-sBb4FKGSZ8hD0")
 
 jobs_sheet = sheet.worksheet("Jobs")
 financials_sheet = sheet.worksheet("Financials")
@@ -85,7 +83,7 @@ jobs_sheet.resize(rows=1)
 jobs_sheet.append_rows(jobs)
 
 # ==========================================================
-# ✅ GLASSDOOR RATINGS (USED ONLY IN SCORING)
+# ✅ GLASSDOOR RATINGS (SCORING ONLY)
 # ==========================================================
 glassdoor_ratings = {
     "Curaleaf": 3.2,
@@ -96,6 +94,31 @@ glassdoor_ratings = {
     "Ayr Wellness": 2.8,
     "Jushi": 3.3
 }
+
+# ==========================================================
+# ✅ LABEL FUNCTIONS (NEW)
+# ==========================================================
+
+def financial_label(x):
+    if x >= 8: return "Strong Financials"
+    elif x >= 5: return "Stable"
+    else: return "Weak"
+
+def job_label(x):
+    if x >= 8: return "Aggressive Expansion"
+    elif x >= 5: return "Moderate Hiring"
+    else: return "Low Hiring"
+
+def risk_label(x):
+    if x >= 7: return "Low Risk"
+    elif x >= 4: return "Moderate Risk"
+    else: return "High Risk"
+
+def overall_label(x):
+    if x >= 8: return "✅ Strong Opportunity"
+    elif x >= 6: return "⚠️ Growth – Watch Risk"
+    elif x >= 4: return "⚠️ Mixed Signals"
+    else: return "❌ High Risk"
 
 # ==========================================================
 # ✅ FINANCIALS + RISK + SCORES
@@ -111,13 +134,7 @@ tickers = {
     "Jushi": "JUSHF"
 }
 
-financials = []
-risk_rows = []
 score_rows = []
-
-# =========================
-# ✅ FUNCTIONS
-# =========================
 
 def calc_risk(d):
     return round(
@@ -130,10 +147,6 @@ def calc_risk(d):
 
 def normalize(v, low, high):
     return max(0, min((v - low)/(high-low),1))
-
-# =========================
-# ✅ LOOP
-# =========================
 
 for name, ticker in tickers.items():
     try:
@@ -161,13 +174,12 @@ for name, ticker in tickers.items():
         de = debt/equity
         cr = assets/liab
         pm = net/rev
-
-        rg = 0  # safe baseline
-
         ic = ebit/interest
 
+        rg = 0
+
         risk = calc_risk({"de":de,"cr":cr,"pm":pm,"rg":rg,"ic":ic})
-        risk_norm = max(0,10-(risk*3))
+        risk_norm = max(0, 10-(risk*3))
 
         pm_s = normalize(pm,-0.2,0.2)
         rg_s = normalize(rg,-0.2,0.3)
@@ -188,20 +200,25 @@ for name, ticker in tickers.items():
             glass_score*0.10
         ,2)
 
+        # ✅ FINAL ROW WITH LABELS
         score_rows.append([
             name,
             financial_score,
             round(job_score,2),
             round(risk_norm,2),
             glass_score,
-            total
+            total,
+            financial_label(financial_score),
+            job_label(job_score),
+            risk_label(risk_norm),
+            overall_label(total)
         ])
 
     except:
         print("Error:", name)
 
 # =========================
-# ✅ WRITE SCORES ONLY
+# ✅ WRITE
 # =========================
 scores_sheet.resize(rows=1)
 

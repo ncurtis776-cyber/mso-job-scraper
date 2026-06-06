@@ -6,7 +6,7 @@ from google.oauth2.service_account import Credentials
 import os, json
 import yfinance as yf
 
-print("START CLEAN SYSTEM")
+print("START FINAL SYSTEM")
 
 # =========================
 # ✅ AUTH
@@ -24,8 +24,6 @@ client = gspread.authorize(creds)
 sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1FkEqxI_ZhpdaUD1AxyV_oGTW3mHXo-sBb4FKGSZ8hD0")
 
 jobs_sheet = sheet.worksheet("Jobs")
-financials_sheet = sheet.worksheet("Financials")
-risk_sheet = sheet.worksheet("Risk")
 scores_sheet = sheet.worksheet("Scores")
 
 headers = {"User-Agent": "Mozilla/5.0"}
@@ -83,7 +81,7 @@ jobs_sheet.resize(rows=1)
 jobs_sheet.append_rows(jobs)
 
 # ==========================================================
-# ✅ GLASSDOOR RATINGS (SCORING ONLY)
+# ✅ GLASSDOOR BASE
 # ==========================================================
 glassdoor_ratings = {
     "Curaleaf": 3.2,
@@ -96,29 +94,29 @@ glassdoor_ratings = {
 }
 
 # ==========================================================
-# ✅ LABEL FUNCTIONS (NEW)
+# ✅ LABEL FUNCTIONS
 # ==========================================================
 
 def financial_label(x):
-    if x >= 8: return "Strong Financials"
+    if x >= 8: return "Strong"
     elif x >= 5: return "Stable"
     else: return "Weak"
 
 def job_label(x):
-    if x >= 8: return "Aggressive Expansion"
-    elif x >= 5: return "Moderate Hiring"
-    else: return "Low Hiring"
+    if x >= 8: return "Aggressive"
+    elif x >= 5: return "Moderate"
+    else: return "Low"
 
 def risk_label(x):
-    if x >= 7: return "Low Risk"
-    elif x >= 4: return "Moderate Risk"
-    else: return "High Risk"
+    if x >= 7: return "Low"
+    elif x >= 4: return "Moderate"
+    else: return "High"
 
 def overall_label(x):
-    if x >= 8: return "✅ Strong Opportunity"
-    elif x >= 6: return "⚠️ Growth – Watch Risk"
-    elif x >= 4: return "⚠️ Mixed Signals"
-    else: return "❌ High Risk"
+    if x >= 8: return "Strong Opportunity"
+    elif x >= 6: return "Growth – Watch"
+    elif x >= 4: return "Mixed"
+    else: return "High Risk"
 
 # ==========================================================
 # ✅ FINANCIALS + RISK + SCORES
@@ -147,6 +145,10 @@ def calc_risk(d):
 
 def normalize(v, low, high):
     return max(0, min((v - low)/(high-low),1))
+
+# =========================
+# ✅ LOOP
+# =========================
 
 for name, ticker in tickers.items():
     try:
@@ -179,7 +181,7 @@ for name, ticker in tickers.items():
         rg = 0
 
         risk = calc_risk({"de":de,"cr":cr,"pm":pm,"rg":rg,"ic":ic})
-        risk_norm = max(0, 10-(risk*3))
+        risk_norm = max(0,10-(risk*3))
 
         pm_s = normalize(pm,-0.2,0.2)
         rg_s = normalize(rg,-0.2,0.3)
@@ -200,14 +202,14 @@ for name, ticker in tickers.items():
             glass_score*0.10
         ,2)
 
-        # ✅ FINAL ROW WITH LABELS
         score_rows.append([
             name,
-            financial_score,
-            round(job_score,2),
-            round(risk_norm,2),
-            glass_score,
-            total,
+            financial_score,   # Fin
+            round(job_score,2),# Employee
+            round(risk_norm,2),# Risk
+            glass_score,       # Glassdoor
+            total,             # Total
+
             financial_label(financial_score),
             job_label(job_score),
             risk_label(risk_norm),
@@ -225,4 +227,4 @@ scores_sheet.resize(rows=1)
 if score_rows:
     scores_sheet.append_rows(score_rows)
 
-print("✅ CLEAN SYSTEM COMPLETE")
+print("✅ FINAL SYSTEM COMPLETE")

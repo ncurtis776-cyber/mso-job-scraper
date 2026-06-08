@@ -30,7 +30,7 @@ financials_sheet = sheet.worksheet("Financials")
 headers = {"User-Agent": "Mozilla/5.0"}
 
 # ==========================================================
-# ✅ JOBS (ORIGINAL)
+# ✅ JOBS (EXPANDED + FIXED)
 # ==========================================================
 jobs = []
 seen = {}
@@ -43,9 +43,8 @@ sources = [
     ("Trulieve", "https://boards.greenhouse.io/embed/job_board?for=trulieve")
 ]
 
+# ✅ GREENHOUSE (keeps MSOs but now flexible)
 for name, url in sources:
-    job_counts[name] = 0
-
     try:
         soup = BeautifulSoup(requests.get(url, headers=headers).text, "html.parser")
 
@@ -69,7 +68,9 @@ for name, url in sources:
                 continue
 
             seen[key] = True
-            job_counts[name] += 1
+
+            # ✅ FIXED COUNTING (was static before)
+            job_counts[name] = job_counts.get(name, 0) + 1
 
             jobs.append([
                 name, title, "Relevant", "Unknown",
@@ -78,11 +79,10 @@ for name, url in sources:
     except:
         pass
 
-# ==========================================================
-# ✅ NEW JOB SOURCES (SAFE ADD)
-# ==========================================================
 
+# ==========================================================
 # ✅ MarijuanaJobs
+# ==========================================================
 try:
     res = requests.get("https://www.marijuanajobscannabiscareers.com/job-search", headers=headers)
     soup = BeautifulSoup(res.text, "html.parser")
@@ -109,8 +109,17 @@ try:
 
         seen[key] = True
 
+        # ✅ try to extract company
+        company = "Unknown"
+        if " at " in title.lower():
+            parts = title.split(" at ")
+            if len(parts) > 1:
+                company = parts[-1].strip()
+
+        job_counts[company] = job_counts.get(company, 0) + 1
+
         jobs.append([
-            "Various (MarijuanaJobs)",
+            company,
             title,
             "Job Board",
             "Unknown",
@@ -120,7 +129,10 @@ try:
 except:
     pass
 
+
+# ==========================================================
 # ✅ Inweed
+# ==========================================================
 try:
     res = requests.get("https://jobsinweed.com/", headers=headers)
     soup = BeautifulSoup(res.text, "html.parser")
@@ -147,8 +159,17 @@ try:
 
         seen[key] = True
 
+        # ✅ optional company extraction
+        company = "Unknown"
+        if " at " in title.lower():
+            parts = title.split(" at ")
+            if len(parts) > 1:
+                company = parts[-1].strip()
+
+        job_counts[company] = job_counts.get(company, 0) + 1
+
         jobs.append([
-            "Various (Inweed)",
+            company,
             title,
             "Job Board",
             "Unknown",
@@ -158,12 +179,13 @@ try:
 except:
     pass
 
+
 # ✅ WRITE JOBS
 jobs_sheet.resize(rows=1)
 jobs_sheet.append_rows(jobs)
 
 # ==========================================================
-# ✅ REST OF YOUR CODE (UNCHANGED)
+# ✅ REST OF SYSTEM (UNCHANGED)
 # ==========================================================
 
 glassdoor_ratings = {

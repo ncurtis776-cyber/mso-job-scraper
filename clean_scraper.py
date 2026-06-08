@@ -5,6 +5,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import os, json
 import yfinance as yf
+import re
 
 print("START FINAL SYSTEM")
 
@@ -29,8 +30,23 @@ financials_sheet = sheet.worksheet("Financials")
 
 headers = {"User-Agent": "Mozilla/5.0"}
 
+# =========================
+# ✅ CLEANING + FILTER
+# =========================
+def clean_title(text):
+    text = re.sub(r"\d+\s+(hours|days)\s+ago", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+keywords = [
+    "director","vp","vice president","head","chief",
+    "manager","senior manager","lead","supervisor",
+    "operations","supply chain","logistics",
+    "finance","accounting","hr","people","compliance"
+]
+
 # ==========================================================
-# ✅ JOBS (EXPANDED + FIXED)
+# ✅ JOBS (FIXED + EXPANDED)
 # ==========================================================
 jobs = []
 seen = {}
@@ -43,7 +59,7 @@ sources = [
     ("Trulieve", "https://boards.greenhouse.io/embed/job_board?for=trulieve")
 ]
 
-# ✅ GREENHOUSE (keeps MSOs but now flexible)
+# ✅ GREENHOUSE
 for name, url in sources:
     try:
         soup = BeautifulSoup(requests.get(url, headers=headers).text, "html.parser")
@@ -55,21 +71,26 @@ for name, url in sources:
             if not raw or not href or "/jobs/" not in href:
                 continue
 
-            title = raw.split(" - ")[0]
+            title = clean_title(raw.split(" - ")[0])
 
-            if not any(x in title.lower() for x in ["director","vp","operations"]):
+            if len(title) < 8:
+                continue
+
+            if any(x in title.lower() for x in ["apply","login","home"]):
+                continue
+
+            if not any(k in title.lower() for k in keywords):
                 continue
 
             if href.startswith("/"):
                 href = "https://boards.greenhouse.io" + href
 
-            key = name + title
+            key = title + href
             if key in seen:
                 continue
 
             seen[key] = True
 
-            # ✅ FIXED COUNTING (was static before)
             job_counts[name] = job_counts.get(name, 0) + 1
 
             jobs.append([
@@ -84,47 +105,47 @@ for name, url in sources:
 # ✅ MarijuanaJobs
 # ==========================================================
 try:
-    res = requests.get("https://www.marijuanajobscannabiscareers.com/job-search", headers=headers)
-    soup = BeautifulSoup(res.text, "html.parser")
+    soup = BeautifulSoup(requests.get(
+        "https://www.marijuanajobscannabiscareers.com/job-search",
+        headers=headers).text, "html.parser")
 
     for link in soup.find_all("a"):
-        title = link.get_text(strip=True)
+        title = clean_title(link.get_text(strip=True))
         href = link.get("href")
 
         if not title or not href:
             continue
 
+        if len(title) < 10:
+            continue
+
         if "job" not in href.lower():
             continue
 
-        if not any(x in title.lower() for x in ["director","vp","operations"]):
+        if not any(k in title.lower() for k in keywords):
             continue
 
         if href.startswith("/"):
             href = "https://www.marijuanajobscannabiscareers.com" + href
 
-        key = "MJ" + title
+        key = title + href
         if key in seen:
             continue
 
         seen[key] = True
 
-        # ✅ try to extract company
         company = "Unknown"
         if " at " in title.lower():
-            parts = title.split(" at ")
+            parts = title.rsplit(" at ", 1)
             if len(parts) > 1:
-                company = parts[-1].strip()
+                company = parts[1]
+                title = parts[0]
 
         job_counts[company] = job_counts.get(company, 0) + 1
 
         jobs.append([
-            company,
-            title,
-            "Job Board",
-            "Unknown",
-            datetime.today().strftime('%Y-%m-%d'),
-            href
+            company, title, "Job Board", "Unknown",
+            datetime.today().strftime('%Y-%m-%d'), href
         ])
 except:
     pass
@@ -134,47 +155,44 @@ except:
 # ✅ Inweed
 # ==========================================================
 try:
-    res = requests.get("https://jobsinweed.com/", headers=headers)
-    soup = BeautifulSoup(res.text, "html.parser")
+    soup = BeautifulSoup(requests.get(
+        "https://jobsinweed.com/", headers=headers).text,
+        "html.parser")
 
     for link in soup.find_all("a"):
-        title = link.get_text(strip=True)
+        title = clean_title(link.get_text(strip=True))
         href = link.get("href")
 
         if not title or not href:
             continue
 
-        if len(title) < 10:
+        if len(title) < 12:
             continue
 
-        if not any(x in title.lower() for x in ["director","vp","manager","operations"]):
+        if not any(k in title.lower() for k in keywords):
             continue
 
         if href.startswith("/"):
             href = "https://jobsinweed.com" + href
 
-        key = "IW" + title
+        key = title + href
         if key in seen:
             continue
 
         seen[key] = True
 
-        # ✅ optional company extraction
         company = "Unknown"
         if " at " in title.lower():
-            parts = title.split(" at ")
+            parts = title.rsplit(" at ", 1)
             if len(parts) > 1:
-                company = parts[-1].strip()
+                company = parts[1]
+                title = parts[0]
 
         job_counts[company] = job_counts.get(company, 0) + 1
 
         jobs.append([
-            company,
-            title,
-            "Job Board",
-            "Unknown",
-            datetime.today().strftime('%Y-%m-%d'),
-            href
+            company, title, "Job Board", "Unknown",
+            datetime.today().strftime('%Y-%m-%d'), href
         ])
 except:
     pass
@@ -185,7 +203,7 @@ jobs_sheet.resize(rows=1)
 jobs_sheet.append_rows(jobs)
 
 # ==========================================================
-# ✅ REST OF SYSTEM (UNCHANGED)
+# ✅ REST (UNCHANGED)
 # ==========================================================
 
 glassdoor_ratings = {
@@ -199,25 +217,16 @@ glassdoor_ratings = {
 }
 
 def financial_label(x):
-    if x >= 8: return "Strong"
-    elif x >= 5: return "Stable"
-    else: return "Weak"
+    return "Strong" if x>=8 else "Stable" if x>=5 else "Weak"
 
 def job_label(x):
-    if x >= 8: return "Aggressive"
-    elif x >= 5: return "Moderate"
-    else: return "Low"
+    return "Aggressive" if x>=8 else "Moderate" if x>=5 else "Low"
 
 def risk_label(x):
-    if x >= 7: return "Low"
-    elif x >= 4: return "Moderate"
-    else: return "High"
+    return "Low" if x>=7 else "Moderate" if x>=4 else "High"
 
 def overall_label(x):
-    if x >= 8: return "Strong Opportunity"
-    elif x >= 6: return "Growth – Watch"
-    elif x >= 4: return "Mixed"
-    else: return "High Risk"
+    return "Strong Opportunity" if x>=8 else "Growth – Watch" if x>=6 else "Mixed" if x>=4 else "High Risk"
 
 tickers = {
     "Curaleaf": "CURLF",
@@ -241,40 +250,25 @@ def calc_risk(d):
         (1/d["ic"] if d["ic"] else 1)*0.1
     ,2)
 
-def normalize(v, low, high):
-    return max(0, min((v - low)/(high-low),1))
+def normalize(v,a,b): return max(0,min((v-a)/(b-a),1))
 
 for name, ticker in tickers.items():
     try:
         s = yf.Ticker(ticker)
+        bs = s.balance_sheet.iloc[:,0] if not s.balance_sheet.empty else {}
+        fin = s.financials.iloc[:,0] if not s.financials.empty else {}
 
-        bs = s.balance_sheet
-        fin = s.financials
+        g=lambda x:float(bs.get(x,0)); f=lambda x:float(fin.get(x,0))
 
-        bs = bs.iloc[:,0] if not bs.empty else {}
-        fin = fin.iloc[:,0] if not fin.empty else {}
+        debt=g("Total Debt"); equity=g("Total Stockholder Equity") or 1
+        assets=g("Total Current Assets"); liab=g("Total Current Liabilities") or 1
 
-        g = lambda x: float(bs.get(x,0))
-        f = lambda x: float(fin.get(x,0))
+        rev=f("Total Revenue") or 1; net=f("Net Income")
+        ebit=f("Ebit"); interest=abs(f("Interest Expense")) or 1
 
-        debt = g("Total Debt")
-        equity = g("Total Stockholder Equity") or 1
-        assets = g("Total Current Assets")
-        liab = g("Total Current Liabilities") or 1
-
-        rev = f("Total Revenue") or 1
-        net = f("Net Income")
-        ebit = f("Ebit")
-        interest = abs(f("Interest Expense")) or 1
-
-        try:
-            ebitda = s.info.get("ebitda", None)
-        except:
-            ebitda = None
-
-        if not ebitda:
-            depreciation = f("Depreciation")
-            ebitda = ebit + depreciation
+        try: ebitda=s.info.get("ebitda")
+        except: ebitda=None
+        if not ebitda: ebitda=ebit+f("Depreciation")
 
         financial_rows.append([
             name,
@@ -284,50 +278,31 @@ for name, ticker in tickers.items():
             datetime.today().strftime('%Y-%m-%d')
         ])
 
-        de = debt/equity
-        cr = assets/liab
-        pm = net/rev
-        ic = ebit/interest
+        de=debt/equity; cr=assets/liab; pm=net/rev; ic=ebit/interest
+        risk=calc_risk({"de":de,"cr":cr,"pm":pm,"rg":0,"ic":ic})
+        risk_norm=max(0,10-(risk*3))
 
-        rg = 0
+        financial_score=round((normalize(pm,-0.2,0.2)*0.3 +
+                               normalize(0,-0.2,0.3)*0.3 +
+                               normalize(1-(de/3),0,1)*0.2 +
+                               normalize(cr,0,2)*0.2)*10,2)
 
-        risk = calc_risk({"de":de,"cr":cr,"pm":pm,"rg":rg,"ic":ic})
-        risk_norm = max(0,10-(risk*3))
+        job_score=min(job_counts.get(name,0)/10,1)*10
+        glass_score=round((glassdoor_ratings.get(name,3)/5)*10,2)
 
-        pm_s = normalize(pm,-0.2,0.2)
-        rg_s = normalize(rg,-0.2,0.3)
-        de_s = normalize(1-(de/3),0,1)
-        cr_s = normalize(cr,0,2)
-
-        financial_score = round((pm_s*0.3 + rg_s*0.3 + de_s*0.2 + cr_s*0.2)*10,2)
-
-        job_score = min(job_counts.get(name,0)/10,1)*10
-
-        rating = glassdoor_ratings.get(name,3.0)
-        glass_score = round((rating/5)*10,2)
-
-        total = round(
-            financial_score*0.35 +
-            job_score*0.25 +
-            risk_norm*0.30 +
-            glass_score*0.10
-        ,2)
+        total=round(financial_score*0.35 + job_score*0.25 +
+                    risk_norm*0.30 + glass_score*0.10,2)
 
         score_rows.append([
-            name,
-            financial_score,
-            round(job_score,2),
-            round(risk_norm,2),
-            glass_score,
-            total,
+            name, financial_score, round(job_score,2),
+            round(risk_norm,2), glass_score, total,
             financial_label(financial_score),
             job_label(job_score),
             risk_label(risk_norm),
             overall_label(total)
         ])
-
     except:
-        print("Error:", name)
+        print("Error:",name)
 
 scores_sheet.resize(rows=1)
 scores_sheet.append_rows(score_rows)

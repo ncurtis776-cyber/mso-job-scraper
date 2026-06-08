@@ -30,7 +30,7 @@ financials_sheet = sheet.worksheet("Financials")
 headers = {"User-Agent": "Mozilla/5.0"}
 
 # ==========================================================
-# ✅ JOBS
+# ✅ JOBS (ORIGINAL)
 # ==========================================================
 jobs = []
 seen = {}
@@ -78,12 +78,94 @@ for name, url in sources:
     except:
         pass
 
+# ==========================================================
+# ✅ NEW JOB SOURCES (SAFE ADD)
+# ==========================================================
+
+# ✅ MarijuanaJobs
+try:
+    res = requests.get("https://www.marijuanajobscannabiscareers.com/job-search", headers=headers)
+    soup = BeautifulSoup(res.text, "html.parser")
+
+    for link in soup.find_all("a"):
+        title = link.get_text(strip=True)
+        href = link.get("href")
+
+        if not title or not href:
+            continue
+
+        if "job" not in href.lower():
+            continue
+
+        if not any(x in title.lower() for x in ["director","vp","operations"]):
+            continue
+
+        if href.startswith("/"):
+            href = "https://www.marijuanajobscannabiscareers.com" + href
+
+        key = "MJ" + title
+        if key in seen:
+            continue
+
+        seen[key] = True
+
+        jobs.append([
+            "Various (MarijuanaJobs)",
+            title,
+            "Job Board",
+            "Unknown",
+            datetime.today().strftime('%Y-%m-%d'),
+            href
+        ])
+except:
+    pass
+
+# ✅ Inweed
+try:
+    res = requests.get("https://jobsinweed.com/", headers=headers)
+    soup = BeautifulSoup(res.text, "html.parser")
+
+    for link in soup.find_all("a"):
+        title = link.get_text(strip=True)
+        href = link.get("href")
+
+        if not title or not href:
+            continue
+
+        if len(title) < 10:
+            continue
+
+        if not any(x in title.lower() for x in ["director","vp","manager","operations"]):
+            continue
+
+        if href.startswith("/"):
+            href = "https://jobsinweed.com" + href
+
+        key = "IW" + title
+        if key in seen:
+            continue
+
+        seen[key] = True
+
+        jobs.append([
+            "Various (Inweed)",
+            title,
+            "Job Board",
+            "Unknown",
+            datetime.today().strftime('%Y-%m-%d'),
+            href
+        ])
+except:
+    pass
+
+# ✅ WRITE JOBS
 jobs_sheet.resize(rows=1)
 jobs_sheet.append_rows(jobs)
 
 # ==========================================================
-# ✅ GLASSDOOR BASE
+# ✅ REST OF YOUR CODE (UNCHANGED)
 # ==========================================================
+
 glassdoor_ratings = {
     "Curaleaf": 3.2,
     "Cresco Labs": 3.1,
@@ -93,10 +175,6 @@ glassdoor_ratings = {
     "Ayr Wellness": 2.8,
     "Jushi": 3.3
 }
-
-# ==========================================================
-# ✅ LABEL FUNCTIONS
-# ==========================================================
 
 def financial_label(x):
     if x >= 8: return "Strong"
@@ -118,10 +196,6 @@ def overall_label(x):
     elif x >= 6: return "Growth – Watch"
     elif x >= 4: return "Mixed"
     else: return "High Risk"
-
-# ==========================================================
-# ✅ FINANCIALS + SCORES
-# ==========================================================
 
 tickers = {
     "Curaleaf": "CURLF",
@@ -148,10 +222,6 @@ def calc_risk(d):
 def normalize(v, low, high):
     return max(0, min((v - low)/(high-low),1))
 
-# =========================
-# ✅ LOOP
-# =========================
-
 for name, ticker in tickers.items():
     try:
         s = yf.Ticker(ticker)
@@ -175,7 +245,6 @@ for name, ticker in tickers.items():
         ebit = f("Ebit")
         interest = abs(f("Interest Expense")) or 1
 
-        # ✅ EBITDA FIX
         try:
             ebitda = s.info.get("ebitda", None)
         except:
@@ -185,7 +254,6 @@ for name, ticker in tickers.items():
             depreciation = f("Depreciation")
             ebitda = ebit + depreciation
 
-        # ✅ FINANCIAL TABLE
         financial_rows.append([
             name,
             f"{round(rev/1e6,1)}M",
@@ -238,10 +306,6 @@ for name, ticker in tickers.items():
 
     except:
         print("Error:", name)
-
-# =========================
-# ✅ WRITE TABLES
-# =========================
 
 scores_sheet.resize(rows=1)
 scores_sheet.append_rows(score_rows)

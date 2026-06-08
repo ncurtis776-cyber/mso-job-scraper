@@ -38,6 +38,31 @@ def clean_title(text):
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
+# ✅ NEW: COMPANY EXTRACTION (KEY FIX)
+def extract_company(title):
+    known_companies = [
+        "curaleaf","cresco","green thumb","trulieve",
+        "verano","ayr","jushi","terrascend","columbia care",
+        "planet 13","glass house","ascend","cannabist",
+        "deep roots","gti"
+    ]
+
+    lower = title.lower()
+
+    for comp in known_companies:
+        if comp in lower:
+            clean = re.sub(comp, "", title, flags=re.IGNORECASE).strip()
+            return comp.title(), clean
+
+    for sep in [" at ", "-", "|"]:
+        if sep in lower:
+            parts = title.rsplit(sep, 1)
+            if len(parts) > 1:
+                return parts[1].strip(), parts[0].strip()
+
+    return "Unknown", title
+
+
 keywords = [
     "director","vp","vice president","head","chief",
     "manager","senior manager","lead","supervisor",
@@ -46,7 +71,7 @@ keywords = [
 ]
 
 # ==========================================================
-# ✅ JOBS (FIXED + EXPANDED)
+# ✅ JOBS
 # ==========================================================
 jobs = []
 seen = {}
@@ -59,7 +84,7 @@ sources = [
     ("Trulieve", "https://boards.greenhouse.io/embed/job_board?for=trulieve")
 ]
 
-# ✅ GREENHOUSE
+# ✅ GREENHOUSE (unchanged)
 for name, url in sources:
     try:
         soup = BeautifulSoup(requests.get(url, headers=headers).text, "html.parser")
@@ -102,7 +127,7 @@ for name, url in sources:
 
 
 # ==========================================================
-# ✅ MarijuanaJobs
+# ✅ MarijuanaJobs (FIXED)
 # ==========================================================
 try:
     soup = BeautifulSoup(requests.get(
@@ -134,12 +159,11 @@ try:
 
         seen[key] = True
 
-        company = "Unknown"
-        if " at " in title.lower():
-            parts = title.rsplit(" at ", 1)
-            if len(parts) > 1:
-                company = parts[1]
-                title = parts[0]
+        # ✅ FIX HERE
+        company, title = extract_company(title)
+
+        if company == "Unknown":
+            continue
 
         job_counts[company] = job_counts.get(company, 0) + 1
 
@@ -152,7 +176,7 @@ except:
 
 
 # ==========================================================
-# ✅ Inweed
+# ✅ Inweed (FIXED)
 # ==========================================================
 try:
     soup = BeautifulSoup(requests.get(
@@ -181,12 +205,11 @@ try:
 
         seen[key] = True
 
-        company = "Unknown"
-        if " at " in title.lower():
-            parts = title.rsplit(" at ", 1)
-            if len(parts) > 1:
-                company = parts[1]
-                title = parts[0]
+        # ✅ FIX HERE
+        company, title = extract_company(title)
+
+        if company == "Unknown":
+            continue
 
         job_counts[company] = job_counts.get(company, 0) + 1
 
@@ -197,13 +220,12 @@ try:
 except:
     pass
 
-
 # ✅ WRITE JOBS
 jobs_sheet.resize(rows=1)
 jobs_sheet.append_rows(jobs)
 
 # ==========================================================
-# ✅ REST (UNCHANGED)
+# ✅ REST OF SYSTEM (UNCHANGED)
 # ==========================================================
 
 glassdoor_ratings = {
@@ -250,7 +272,8 @@ def calc_risk(d):
         (1/d["ic"] if d["ic"] else 1)*0.1
     ,2)
 
-def normalize(v,a,b): return max(0,min((v-a)/(b-a),1))
+def normalize(v,a,b):
+    return max(0,min((v-a)/(b-a),1))
 
 for name, ticker in tickers.items():
     try:
@@ -258,17 +281,26 @@ for name, ticker in tickers.items():
         bs = s.balance_sheet.iloc[:,0] if not s.balance_sheet.empty else {}
         fin = s.financials.iloc[:,0] if not s.financials.empty else {}
 
-        g=lambda x:float(bs.get(x,0)); f=lambda x:float(fin.get(x,0))
+        g=lambda x:float(bs.get(x,0))
+        f=lambda x:float(fin.get(x,0))
 
-        debt=g("Total Debt"); equity=g("Total Stockholder Equity") or 1
-        assets=g("Total Current Assets"); liab=g("Total Current Liabilities") or 1
+        debt=g("Total Debt")
+        equity=g("Total Stockholder Equity") or 1
+        assets=g("Total Current Assets")
+        liab=g("Total Current Liabilities") or 1
 
-        rev=f("Total Revenue") or 1; net=f("Net Income")
-        ebit=f("Ebit"); interest=abs(f("Interest Expense")) or 1
+        rev=f("Total Revenue") or 1
+        net=f("Net Income")
+        ebit=f("Ebit")
+        interest=abs(f("Interest Expense")) or 1
 
-        try: ebitda=s.info.get("ebitda")
-        except: ebitda=None
-        if not ebitda: ebitda=ebit+f("Depreciation")
+        try:
+            ebitda=s.info.get("ebitda")
+        except:
+            ebitda=None
+
+        if not ebitda:
+            ebitda=ebit+f("Depreciation")
 
         financial_rows.append([
             name,
@@ -278,7 +310,11 @@ for name, ticker in tickers.items():
             datetime.today().strftime('%Y-%m-%d')
         ])
 
-        de=debt/equity; cr=assets/liab; pm=net/rev; ic=ebit/interest
+        de=debt/equity
+        cr=assets/liab
+        pm=net/rev
+        ic=ebit/interest
+
         risk=calc_risk({"de":de,"cr":cr,"pm":pm,"rg":0,"ic":ic})
         risk_norm=max(0,10-(risk*3))
 
@@ -288,21 +324,29 @@ for name, ticker in tickers.items():
                                normalize(cr,0,2)*0.2)*10,2)
 
         job_score=min(job_counts.get(name,0)/10,1)*10
+
         glass_score=round((glassdoor_ratings.get(name,3)/5)*10,2)
 
-        total=round(financial_score*0.35 + job_score*0.25 +
-                    risk_norm*0.30 + glass_score*0.10,2)
+        total=round(financial_score*0.35 +
+                    job_score*0.25 +
+                    risk_norm*0.30 +
+                    glass_score*0.10,2)
 
         score_rows.append([
-            name, financial_score, round(job_score,2),
-            round(risk_norm,2), glass_score, total,
+            name,
+            financial_score,
+            round(job_score,2),
+            round(risk_norm,2),
+            glass_score,
+            total,
             financial_label(financial_score),
             job_label(job_score),
             risk_label(risk_norm),
             overall_label(total)
         ])
+
     except:
-        print("Error:",name)
+        print("Error:", name)
 
 scores_sheet.resize(rows=1)
 scores_sheet.append_rows(score_rows)

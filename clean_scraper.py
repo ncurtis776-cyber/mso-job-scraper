@@ -127,28 +127,43 @@ jobs_sheet.append_rows(jobs)
 # ==========================================================
 violations = []
 
-# ✅ Michigan CRA Enforcement
+# ✅ Michigan (DEEP SCRAPE)
 try:
-    url = "https://www.michigan.gov/cra/enforcement"
-    soup = BeautifulSoup(requests.get(url, headers=headers).text, "html.parser")
+    base = "https://www.michigan.gov"
+    entry = "https://www.michigan.gov/cra/disciplinary-actions"
+
+    soup = BeautifulSoup(requests.get(entry, headers=headers).text, "html.parser")
 
     for link in soup.find_all("a"):
-        text = link.get_text(strip=True)
         href = link.get("href")
+        text = link.get_text(strip=True)
 
-        if not text or not href:
+        if not href or ".pdf" not in href:
             continue
 
-        if any(x in text.lower() for x in ["violation","fine","suspension","enforcement","disciplinary"]):
-            if href.startswith("/"):
-                href = "https://www.michigan.gov" + href
+        if href.startswith("/"):
+            href = base + href
 
-            violations.append([
-                "Michigan",
-                text,
-                datetime.today().strftime('%Y-%m-%d'),
-                href
-            ])
+        # ✅ open PDF/Text page title as proxy signal
+        title = clean_title(text)
+
+        # ✅ extract possible company
+        company, clean = extract_company(title)
+
+        # ✅ try extracting fine amount
+        fine = ""
+        match = re.search(r"\$\d+[\,\d]*", title)
+        if match:
+            fine = match.group()
+
+        violations.append([
+            "Michigan",
+            company,
+            clean,
+            fine if fine else "Unknown",
+            datetime.today().strftime('%Y-%m-%d'),
+            href
+        ])
 except:
     print("Michigan compliance error")
 

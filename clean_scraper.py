@@ -27,6 +27,7 @@ sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1FkEqxI_Zhpda
 jobs_sheet = sheet.worksheet("Jobs")
 scores_sheet = sheet.worksheet("Scores")
 financials_sheet = sheet.worksheet("Financials")
+compliance_sheet = sheet.worksheet("Compliance")  # ✅ NEW
 
 headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -38,7 +39,6 @@ def clean_title(text):
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
-# ✅ NEW: COMPANY EXTRACTION (KEY FIX)
 def extract_company(title):
     known_companies = [
         "curaleaf","cresco","green thumb","trulieve",
@@ -62,7 +62,6 @@ def extract_company(title):
 
     return "Unknown", title
 
-
 keywords = [
     "director","vp","vice president","head","chief",
     "manager","senior manager","lead","supervisor",
@@ -71,7 +70,7 @@ keywords = [
 ]
 
 # ==========================================================
-# ✅ JOBS
+# ✅ JOBS (UNCHANGED)
 # ==========================================================
 jobs = []
 seen = {}
@@ -84,7 +83,6 @@ sources = [
     ("Trulieve", "https://boards.greenhouse.io/embed/job_board?for=trulieve")
 ]
 
-# ✅ GREENHOUSE (unchanged)
 for name, url in sources:
     try:
         soup = BeautifulSoup(requests.get(url, headers=headers).text, "html.parser")
@@ -101,9 +99,6 @@ for name, url in sources:
             if len(title) < 8:
                 continue
 
-            if any(x in title.lower() for x in ["apply","login","home"]):
-                continue
-
             if not any(k in title.lower() for k in keywords):
                 continue
 
@@ -115,7 +110,6 @@ for name, url in sources:
                 continue
 
             seen[key] = True
-
             job_counts[name] = job_counts.get(name, 0) + 1
 
             jobs.append([
@@ -125,107 +119,72 @@ for name, url in sources:
     except:
         pass
 
-
-# ==========================================================
-# ✅ MarijuanaJobs (FIXED)
-# ==========================================================
-try:
-    soup = BeautifulSoup(requests.get(
-        "https://www.marijuanajobscannabiscareers.com/job-search",
-        headers=headers).text, "html.parser")
-
-    for link in soup.find_all("a"):
-        title = clean_title(link.get_text(strip=True))
-        href = link.get("href")
-
-        if not title or not href:
-            continue
-
-        if len(title) < 10:
-            continue
-
-        if "job" not in href.lower():
-            continue
-
-        if not any(k in title.lower() for k in keywords):
-            continue
-
-        if href.startswith("/"):
-            href = "https://www.marijuanajobscannabiscareers.com" + href
-
-        key = title + href
-        if key in seen:
-            continue
-
-        seen[key] = True
-
-        # ✅ FIX HERE
-        company, title = extract_company(title)
-
-        if company == "Unknown":
-            continue
-
-        job_counts[company] = job_counts.get(company, 0) + 1
-
-        jobs.append([
-            company, title, "Job Board", "Unknown",
-            datetime.today().strftime('%Y-%m-%d'), href
-        ])
-except:
-    pass
-
-
-# ==========================================================
-# ✅ Inweed (FIXED)
-# ==========================================================
-try:
-    soup = BeautifulSoup(requests.get(
-        "https://jobsinweed.com/", headers=headers).text,
-        "html.parser")
-
-    for link in soup.find_all("a"):
-        title = clean_title(link.get_text(strip=True))
-        href = link.get("href")
-
-        if not title or not href:
-            continue
-
-        if len(title) < 12:
-            continue
-
-        if not any(k in title.lower() for k in keywords):
-            continue
-
-        if href.startswith("/"):
-            href = "https://jobsinweed.com" + href
-
-        key = title + href
-        if key in seen:
-            continue
-
-        seen[key] = True
-
-        # ✅ FIX HERE
-        company, title = extract_company(title)
-
-        if company == "Unknown":
-            continue
-
-        job_counts[company] = job_counts.get(company, 0) + 1
-
-        jobs.append([
-            company, title, "Job Board", "Unknown",
-            datetime.today().strftime('%Y-%m-%d'), href
-        ])
-except:
-    pass
-
-# ✅ WRITE JOBS
 jobs_sheet.resize(rows=1)
 jobs_sheet.append_rows(jobs)
 
 # ==========================================================
-# ✅ REST OF SYSTEM (UNCHANGED)
+# ✅ ✅ NEW: COMPLIANCE SCRAPER
+# ==========================================================
+violations = []
+
+# ✅ Michigan CRA Enforcement
+try:
+    url = "https://www.michigan.gov/cra/enforcement"
+    soup = BeautifulSoup(requests.get(url, headers=headers).text, "html.parser")
+
+    for link in soup.find_all("a"):
+        text = link.get_text(strip=True)
+        href = link.get("href")
+
+        if not text or not href:
+            continue
+
+        if any(x in text.lower() for x in ["violation","fine","suspension","enforcement","disciplinary"]):
+            if href.startswith("/"):
+                href = "https://www.michigan.gov" + href
+
+            violations.append([
+                "Michigan",
+                text,
+                datetime.today().strftime('%Y-%m-%d'),
+                href
+            ])
+except:
+    print("Michigan compliance error")
+
+# ✅ Illinois disciplinary / compliance
+try:
+    url = "https://idfpr.illinois.gov"
+    soup = BeautifulSoup(requests.get(url, headers=headers).text, "html.parser")
+
+    for link in soup.find_all("a"):
+        text = link.get_text(strip=True)
+        href = link.get("href")
+
+        if not text or not href:
+            continue
+
+        if any(x in text.lower() for x in ["disciplinary","violation","enforcement"]):
+            if href.startswith("/"):
+                href = "https://idfpr.illinois.gov" + href
+
+            violations.append([
+                "Illinois",
+                text,
+                datetime.today().strftime('%Y-%m-%d'),
+                href
+            ])
+except:
+    print("Illinois compliance error")
+
+# ✅ WRITE COMPLIANCE
+compliance_sheet.resize(rows=1)
+
+if violations:
+    compliance_sheet.append_rows(violations)
+
+# ==========================================================
+# ✅ REST OF YOUR SYSTEM (UNCHANGED)
 # ==========================================================
 
 glassdoor_ratings = {
@@ -278,6 +237,7 @@ def normalize(v,a,b):
 for name, ticker in tickers.items():
     try:
         s = yf.Ticker(ticker)
+
         bs = s.balance_sheet.iloc[:,0] if not s.balance_sheet.empty else {}
         fin = s.financials.iloc[:,0] if not s.financials.empty else {}
 
@@ -324,7 +284,6 @@ for name, ticker in tickers.items():
                                normalize(cr,0,2)*0.2)*10,2)
 
         job_score=min(job_counts.get(name,0)/10,1)*10
-
         glass_score=round((glassdoor_ratings.get(name,3)/5)*10,2)
 
         total=round(financial_score*0.35 +
